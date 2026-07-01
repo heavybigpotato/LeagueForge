@@ -1,0 +1,346 @@
+import { describe, expect, it } from 'vitest'
+import type { League, Match, Team, User } from './types'
+import { PLATFORM_MIN_PLAYERS } from './types'
+import { createLeague } from './league'
+import { approvePlayer, createPendingTeam, removePlayer, requestJoin, resolveMinPlayers } from './team'
+import { generateRoundRobin } from './schedule'
+import { checkIn, confirmScore, disputeScore, resolveDispute, submitScore } from './match'
+import { computeStandings } from './standings'
+import { newInviteCode, inviteLink } from './ids'
+import { auditEntry } from './audit'
+import { evaluateSeasonAchievements } from './achievements'
+
+let userSeq = 0
+function makeUser(overrides: Partial<User> = {}): User {
+  userSeq += 1
+  return {
+    id: `user_${userSeq}`,
+    username: `player${userSeq}`,
+    email: `p${userSeq}@example.com`,
+    phone: `+1555000${userSeq.toString().padStart(4, '0')}`,
+    emailVerified: true,
+    phoneVerified: true,
+    idVerified: false,
+    deviceFingerprint: `fp_${userSeq}`,
+    reputation: 100,
+    createdAt: 0,
+    ...overrides,
+  }
+}
+
+function makeLeague(commissioner: User, overrides: Partial<Parameters<typeof createLeague>[1]> = {}): League {
+  return createLeague(commissioner, {
+    name: 'Sunday Premier League',
+    sport: 'football',
+    logo: '⚽',
+    banner: '',
+    description: 'Test league',
+    country: 'US',
+    city: 'Austin',
+    seasonStart: '2026-08-01',
+    seasonEnd: '2026-12-01',
+    maxTeams: 12,
+    minTeams: 4,
+    minPlayersPerTeam: 11,
+    maxPlayersPerTeam: 25,
+    scheduleFormat: 'round-robin',
+    playoffFormat: 'single-elimination',
+    scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    tieBreakers: ['goal-difference', 'goals-for', 'head-to-head'],
+    privacy: 'public',
+    allowTransfers: false,
+    ...overrides,
+  }).league
+}
+
+/** Build an official team by walking the full pending → official flow. */
+function buildOfficialTeam(league: League, name: string, existing: Team[] = []): { team: Team; captain: User } {
+  const captain = makeUser()
+  let { team } = createPendingTeam(league, captain, { name, logo: '🛡️', primaryColor: '#111', secondaryColor: '#eee', bio: '' }, existing)
+  while (team.memberIds.length < league.minPlayersPerTeam) {
+    const p = makeUser()
+    team = requestJoin(league, team, p, [...existing, team]).team
+    team = approvePlayer(league, team, captain.id, p).team
+  }
+  expect(team.status).toBe('official')
+  return { team, captain }
+}
+
+describe('invite codes', () => {
+  it('generates 8-character unambiguous codes and links', () => {
+    const code = newInviteCode()
+    expect(code).toHaveLength(8)
+    expect(code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/)
+    expect(inviteLink('ABC12345')).toBe('leagueforge.app/join/ABC12345')
+  })
+})
+
+describe('league creation', () => {
+  it('never allows the roster minimum below the platform floor of 11', () => {
+    expect(resolveMinPlayers(5)).toBe(PLATFORM_MIN_PLAYERS)
+    expect(resolveMinPlayers(15)).toBe(15)
+    const league = makeLeague(makeUser(), { minPlayersPerTeam: 3 })
+    expect(league.minPlayersPerTeam).toBe(PLATFORM_MIN_PLAYERS)
+  })
+
+  it('rejects invalid seasons and team bounds', () => {
+    const c = makeUser()
+    expect(() => makeLeague(c, { seasonStart: '2026-08-01', seasonEnd: '2026-07-01' })).toThrow(/Season end/)
+    expect(() => makeLeague(c, { minTeams: 1 })).toThrow(/at least 2 teams/)
+    expect(() => makeLeague(c, { maxPlayersPerTeam: 5 })).toThrow(/Maximum players/)
+  })
+})
+
+describe('pending team → official team activation', () => {
+  it('creates the team as pending, not part of the league', () => {
+    const league = makeLeague(makeUser())
+    const captain = makeUser()
+    const { team } = createPendingTeam(league, captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
+    expect(team.status).toBe('pending')
+    expect(team.memberIds).toEqual([captain.id])
+    expect(team.inviteCode).toHaveLength(8)
+    // pending team never appears in standings
+    expect(computeStandings(league, [team], [])).toHaveLength(0)
+  })
+
+  it('requires verified email and phone to create or join a team', () => {
+    const league = makeLeague(makeUser())
+    const unverified = makeUser({ phoneVerified: false })
+    expect(() =>
+      createPendingTeam(league, unverified, { name: 'X', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []),
+    ).toThrow(/verified/)
+
+    const captain = makeUser()
+    const { team } = createPendingTeam(league, captain, { name: 'Y', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
+    expect(() => requestJoin(league, team, makeUser({ emailVerified: false }), [team])).toThrow(/verify/)
+  })
+
+  it('activates automatically when player #11 is approved, and locks the roster', () => {
+    const league = makeLeague(makeUser()) // no transfers
+    const captain = makeUser()
+    let { team } = createPendingTeam(league, captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
+
+    // captain + 9 approved teammates = 10 players → still pending
+    for (let i = 0; i < 9; i++) {
+      const p = makeUser()
+      team = requestJoin(league, team, p, [team]).team
+      team = approvePlayer(league, team, captain.id, p).team
+    }
+    expect(team.memberIds).toHaveLength(10)
+    expect(team.status).toBe('pending')
+
+    // player #11 joins and is approved → automatic activation
+    const eleventh = makeUser()
+    team = requestJoin(league, team, eleventh, [team]).team
+    const event = approvePlayer(league, team, captain.id, eleventh)
+    expect(event.activated).toBe(true)
+    expect(event.team.status).toBe('official')
+    expect(event.team.activatedAt).toBeDefined()
+    expect(event.team.rosterLocked).toBe(true) // league does not allow transfers
+    expect(event.audit.some((a) => a.action === 'team.activated')).toBe(true)
+  })
+
+  it('joining puts players in the captain approval queue, and only the captain approves', () => {
+    const league = makeLeague(makeUser())
+    const captain = makeUser()
+    let { team } = createPendingTeam(league, captain, { name: 'Z', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
+    const p = makeUser()
+    team = requestJoin(league, team, p, [team]).team
+    expect(team.pendingMemberIds).toContain(p.id)
+    expect(team.memberIds).not.toContain(p.id)
+    expect(() => approvePlayer(league, team, p.id, p)).toThrow(/Only the team captain/)
+  })
+
+  it('blocks one account from joining two teams in the same league', () => {
+    const league = makeLeague(makeUser())
+    const capA = makeUser()
+    const capB = makeUser()
+    const a = createPendingTeam(league, capA, { name: 'A', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []).team
+    const b = createPendingTeam(league, capB, { name: 'B', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [a]).team
+    const p = makeUser()
+    const a2 = requestJoin(league, a, p, [a, b]).team
+    expect(() => requestJoin(league, b, p, [a2, b])).toThrow(/already on a team/)
+    // a captain cannot create a second team in the league either
+    expect(() => createPendingTeam(league, capA, { name: 'C', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [a2, b])).toThrow(/already on a team/)
+  })
+
+  it('enforces the roster maximum and prevents official teams dropping below the minimum', () => {
+    const league = makeLeague(makeUser(), { maxPlayersPerTeam: 11 })
+    const { team, captain } = buildOfficialTeam(league, 'Full Squad')
+    // roster is at max (11) — no more joins
+    expect(() => requestJoin(league, team, makeUser(), [team])).toThrow(/locked|full/)
+    // removing anyone would drop an official team below the minimum
+    const removable = team.memberIds.find((id) => id !== captain.id) as string
+    expect(() => removePlayer(league, team, captain.id, removable)).toThrow(/at least 11/)
+  })
+})
+
+describe('scheduling', () => {
+  it('only schedules official teams, round robin covers every pairing once', () => {
+    const league = makeLeague(makeUser())
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C', 'D']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const pending = createPendingTeam(league, makeUser(), { name: 'Pending', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, teams).team
+
+    const fixtures = generateRoundRobin(league, [...teams, pending])
+    expect(fixtures).toHaveLength(6) // C(4,2)
+    expect(fixtures.every((m) => m.homeTeamId !== pending.id && m.awayTeamId !== pending.id)).toBe(true)
+    const pairs = new Set(fixtures.map((m) => [m.homeTeamId, m.awayTeamId].sort().join('|')))
+    expect(pairs.size).toBe(6)
+  })
+
+  it('double round robin generates home and away legs', () => {
+    const league = makeLeague(makeUser())
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const fixtures = generateRoundRobin(league, teams, { double: true })
+    expect(fixtures).toHaveLength(6) // 3 pairings × 2 legs
+  })
+})
+
+describe('match verification', () => {
+  function setup() {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const home = buildOfficialTeam(league, 'Home United')
+    const away = buildOfficialTeam(league, 'Away City', [home.team])
+    const [match] = generateRoundRobin(league, [home.team, away.team])
+    return { commissioner, league, home, away, match }
+  }
+
+  it('score submission requires the competing captain and does not touch standings', () => {
+    const { league, home, away, match } = setup()
+    const notCaptain = makeUser()
+    expect(() => submitScore(league, match, home.team, notCaptain, 2, 1)).toThrow(/captain/)
+    expect(() => submitScore(league, match, home.team, home.captain, -1, 0)).toThrow(/non-negative/)
+
+    const { match: pending } = submitScore(league, match, home.team, home.captain, 2, 1)
+    expect(pending.status).toBe('awaiting-confirmation')
+    const table = computeStandings(league, [home.team, away.team], [pending])
+    expect(table.every((r) => r.played === 0)).toBe(true)
+  })
+
+  it('both captains confirming makes the result official and updates standings', () => {
+    const { league, home, away, match } = setup()
+    const { match: pending } = submitScore(league, match, home.team, home.captain, 3, 1)
+    // submitter cannot confirm their own score
+    expect(() => confirmScore(league, pending, home.team, home.captain)).toThrow(/own score/)
+
+    const { match: official } = confirmScore(league, pending, away.team, away.captain)
+    expect(official.status).toBe('official')
+    expect(official.result).toMatchObject({ homeScore: 3, awayScore: 1, verifiedBy: 'captains' })
+
+    const table = computeStandings(league, [home.team, away.team], [official])
+    expect(table[0].teamId).toBe(home.team.id)
+    expect(table[0].points).toBe(3)
+    expect(table[0].goalDifference).toBe(2)
+    expect(table[1].points).toBe(0)
+  })
+
+  it('disputes freeze standings until the commissioner resolves with evidence', () => {
+    const { commissioner, league, home, away, match } = setup()
+    const { match: pending } = submitScore(league, match, home.team, home.captain, 5, 0)
+    const { match: disputed } = disputeScore(league, pending, away.team, away.captain, 'Score was 2-2')
+    expect(disputed.status).toBe('disputed')
+    expect(computeStandings(league, [home.team, away.team], [disputed]).every((r) => r.played === 0)).toBe(true)
+
+    // random players cannot resolve
+    expect(() => resolveDispute(league, disputed, makeUser(), 2, 2)).toThrow(/commissioner or an assigned referee/)
+
+    const { match: resolved, audit } = resolveDispute(league, disputed, commissioner, 2, 2)
+    expect(resolved.status).toBe('official')
+    expect(resolved.result?.verifiedBy).toBe('commissioner')
+    expect(audit[0].action).toBe('match.resolved')
+
+    const table = computeStandings(league, [home.team, away.team], [resolved])
+    expect(table.every((r) => r.draws === 1 && r.points === 1)).toBe(true)
+  })
+
+  it('assigned referees can resolve disputes', () => {
+    const { league, home, away, match } = setup()
+    const referee = makeUser()
+    const withRef: League = { ...league, refereeIds: [referee.id] }
+    const { match: pending } = submitScore(withRef, match, home.team, home.captain, 1, 0)
+    const { match: disputed } = disputeScore(withRef, pending, away.team, away.captain, 'wrong')
+    const { match: resolved } = resolveDispute(withRef, disputed, referee, 1, 1)
+    expect(resolved.result?.verifiedBy).toBe('referee')
+  })
+
+  it('records QR check-ins once per player', () => {
+    const { league, home, match } = setup()
+    const { match: checked } = checkIn(league, match, home.captain, home.team.id, true)
+    expect(checked.checkIns).toHaveLength(1)
+    expect(() => checkIn(league, checked, home.captain, home.team.id, true)).toThrow(/Already checked in/)
+  })
+})
+
+describe('audit log', () => {
+  it('entries are frozen — immutable and append-only', () => {
+    const entry = auditEntry('league_1', 'user_1', 'match.score-submitted', 'test')
+    expect(Object.isFrozen(entry)).toBe(true)
+    expect(() => {
+      ;(entry as { detail: string }).detail = 'tampered'
+    }).toThrow()
+  })
+
+  it('every step of the trust flow leaves an audit trail', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const captain = makeUser()
+    const created = createPendingTeam(league, captain, { name: 'Trail FC', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
+    expect(created.audit.map((a) => a.action)).toEqual(['team.created'])
+    const p = makeUser()
+    const joined = requestJoin(league, created.team, p, [created.team])
+    expect(joined.audit.map((a) => a.action)).toEqual(['team.player-joined'])
+    const approved = approvePlayer(league, joined.team, captain.id, p)
+    expect(approved.audit.map((a) => a.action)).toEqual(['team.player-approved'])
+  })
+})
+
+describe('standings tie-breakers and achievements', () => {
+  it('breaks point ties by goal difference then goals for', () => {
+    const league = makeLeague(makeUser())
+    const teams: Team[] = []
+    for (const name of ['Alpha', 'Beta', 'Gamma']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [alpha, beta, gamma] = teams
+    const fixtures = generateRoundRobin(league, teams)
+    const find = (h: Team, a: Team) =>
+      fixtures.find((m) => (m.homeTeamId === h.id && m.awayTeamId === a.id) || (m.homeTeamId === a.id && m.awayTeamId === h.id))!
+
+    const officialize = (m: Match, homeScore: number, awayScore: number): Match => ({
+      ...m,
+      status: 'official',
+      result: { homeScore, awayScore, verifiedAt: 1, verifiedBy: 'captains' },
+    })
+    // Alpha beats Gamma big; Beta beats Gamma small; Alpha–Beta draw → tie on points between Alpha & Beta
+    const m1 = find(alpha, gamma)
+    const m2 = find(beta, gamma)
+    const m3 = find(alpha, beta)
+    const results = [
+      officialize(m1, m1.homeTeamId === alpha.id ? 4 : 0, m1.homeTeamId === alpha.id ? 0 : 4),
+      officialize(m2, m2.homeTeamId === beta.id ? 1 : 0, m2.homeTeamId === beta.id ? 0 : 1),
+      officialize(m3, 1, 1),
+    ]
+    const table = computeStandings(league, teams, results)
+    expect(table[0].teamId).toBe(alpha.id)
+    expect(table[0].points).toBe(table[1].points)
+    expect(table[1].teamId).toBe(beta.id)
+  })
+
+  it('awards Champion and Perfect Season from verified results', () => {
+    const league = makeLeague(makeUser())
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C', 'D']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const winner = teams[0]
+    const fixtures = generateRoundRobin(league, teams).map((m): Match => {
+      const winnerHome = m.homeTeamId === winner.id
+      const winnerInvolved = winnerHome || m.awayTeamId === winner.id
+      const homeScore = winnerInvolved ? (winnerHome ? 2 : 0) : 1
+      const awayScore = winnerInvolved ? (winnerHome ? 0 : 2) : 1
+      return { ...m, status: 'official', result: { homeScore, awayScore, verifiedAt: 1, verifiedBy: 'captains' } }
+    })
+    const awards = evaluateSeasonAchievements(league, teams, fixtures)
+    expect(awards.find((a) => a.key === 'champion')?.teamId).toBe(winner.id)
+    expect(awards.find((a) => a.key === 'perfect-season')?.teamId).toBe(winner.id)
+  })
+})
