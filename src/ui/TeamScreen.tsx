@@ -2,13 +2,14 @@ import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { inviteLink } from '../core/ids'
 import { Avatar, Badge, EmptyState, RosterProgress, TeamLogo, VerificationChecks } from './components'
+import { Icon } from './icons'
 
 export function TeamScreen() {
   const { teamId } = useParams()
   const { state, currentUser, approvePlayer } = useStore()
 
   const team = state.teams.find((t) => t.id === teamId)
-  if (!team) return <EmptyState icon="❓">Team not found.</EmptyState>
+  if (!team) return <EmptyState icon="alert">Team not found.</EmptyState>
   const league = state.leagues.find((l) => l.id === team.leagueId)!
   const captain = state.users.find((u) => u.id === team.captainId)
   const isCaptain = currentUser.id === team.captainId
@@ -16,33 +17,51 @@ export function TeamScreen() {
 
   return (
     <div>
-      <Link to={`/league/${league.id}`} className="backlink">← {league.name}</Link>
-      <div className="row" style={{ marginTop: 12 }}>
-        <TeamLogo team={team} size={56} />
-        <div className="grow">
-          <h1 style={{ margin: 0 }}>{team.name}</h1>
-          <div className="row" style={{ marginTop: 4 }}>
-            <Badge kind={team.status === 'official' ? 'official' : 'pending'}>
-              {team.status === 'official' ? 'Official Team' : 'Pending'}
-            </Badge>
-            {team.rosterLocked && <Badge kind="neutral">Roster locked</Badge>}
+      <Link to={`/league/${league.id}`} className="backlink"><Icon name="arrowLeft" size={15} /> {league.name}</Link>
+
+      <div className="hero">
+        <div
+          className="glow"
+          style={{ background: `radial-gradient(420px 220px at 85% -30%, ${team.primaryColor}2e, transparent 65%)` }}
+        />
+        <div className="hero-head">
+          <TeamLogo team={team} size={62} />
+          <div className="grow">
+            <h1>{team.name}</h1>
+            <div className="row" style={{ gap: 6, marginTop: 6 }}>
+              <Badge kind={team.status === 'official' ? 'official' : 'pending'}>
+                {team.status === 'official' ? 'Official Team' : 'Pending'}
+              </Badge>
+              {team.rosterLocked && <Badge kind="neutral"><Icon name="lock" size={10} /> Roster locked</Badge>}
+            </div>
           </div>
         </div>
+        <div className="kitbar">
+          <i style={{ background: team.primaryColor }} />
+          <i style={{ background: team.secondaryColor }} />
+          <i style={{ background: team.primaryColor }} />
+        </div>
+        {team.bio && <p className="muted" style={{ marginBottom: 0 }}>{team.bio}</p>}
       </div>
-      {team.bio && <p className="muted">{team.bio}</p>}
 
       {team.status === 'pending' ? (
         <div className="card">
-          <strong>Road to activation</strong>
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--volt)' }}><Icon name="gauge" size={17} /></span>
+            <strong>Road to activation</strong>
+          </div>
           <RosterProgress current={team.memberIds.length} required={league.minPlayersPerTeam} />
-          <p className="faint">
+          <p className="faint" style={{ marginBottom: 0 }}>
             A pending team cannot play matches, be scheduled, or appear in standings. When player #{league.minPlayersPerTeam} is
             approved, the team is automatically registered in the league and the commissioner is notified.
           </p>
         </div>
       ) : (
         <div className="card">
-          <strong>🎉 Officially registered</strong>
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--green)' }}><Icon name="shieldCheck" size={17} /></span>
+            <strong>Officially registered</strong>
+          </div>
           <p className="faint" style={{ marginBottom: 0 }}>
             Activated {team.activatedAt ? new Date(team.activatedAt).toLocaleDateString() : ''} — this team is in the league,
             included in the schedule and eligible for standings.
@@ -51,23 +70,31 @@ export function TeamScreen() {
       )}
 
       {isCaptain && !team.rosterLocked && (
-        <div className="card">
-          <strong>Invite players</strong>
-          <p className="faint">Share the code, link, or QR. Players need a verified email and phone number to join.</p>
+        <div className="ticket">
+          <div className="row" style={{ gap: 8, position: 'relative' }}>
+            <span style={{ color: 'var(--volt)' }}><Icon name="ticket" size={17} /></span>
+            <strong>Invite players</strong>
+          </div>
+          <p className="faint" style={{ position: 'relative' }}>
+            Share the code, link, or QR. Players need a verified email and phone number to join.
+          </p>
           <div className="invite-code">{team.inviteCode}</div>
-          <div className="faint" style={{ textAlign: 'center' }}>{inviteLink(team.inviteCode)}</div>
+          <div className="faint" style={{ textAlign: 'center', position: 'relative' }}>{inviteLink(team.inviteCode)}</div>
           <div className="qr" title="QR code" />
         </div>
       )}
 
       {isCaptain && team.pendingMemberIds.length > 0 && (
         <div className="card">
-          <strong>Join requests ({team.pendingMemberIds.length})</strong>
+          <div className="row" style={{ gap: 8, marginBottom: 4 }}>
+            <span style={{ color: 'var(--blue)' }}><Icon name="users" size={17} /></span>
+            <strong>Join requests ({team.pendingMemberIds.length})</strong>
+          </div>
           {team.pendingMemberIds.map((id) => {
             const u = userOf(id)
             if (!u) return null
             return (
-              <div className="row" key={id} style={{ marginTop: 10 }}>
+              <div className="person" key={id}>
                 <Avatar user={u} />
                 <div className="grow">
                   <strong>@{u.username}</strong>
@@ -83,18 +110,20 @@ export function TeamScreen() {
       )}
 
       <h2>
-        Roster · {team.memberIds.length}/{league.maxPlayersPerTeam}
-        <span className="faint"> (min {league.minPlayersPerTeam})</span>
+        Roster · {team.memberIds.length}/{league.maxPlayersPerTeam} <span style={{ color: 'var(--faint)' }}>(min {league.minPlayersPerTeam})</span>
       </h2>
       <div className="card">
         {team.memberIds.map((id) => {
           const u = userOf(id)
           if (!u) return null
           return (
-            <div className="row" key={id} style={{ padding: '7px 0' }}>
+            <div className="person" key={id}>
               <Avatar user={u} />
               <div className="grow">
-                <strong>@{u.username}</strong> {id === team.captainId && <Badge kind="awaiting">Captain</Badge>}
+                <div className="row" style={{ gap: 7 }}>
+                  <strong>@{u.username}</strong>
+                  {id === team.captainId && <Badge kind="volt">Captain</Badge>}
+                </div>
                 <div className="faint">reputation {u.reputation}</div>
               </div>
               <VerificationChecks user={u} />
@@ -103,9 +132,7 @@ export function TeamScreen() {
         })}
       </div>
       {captain && (
-        <p className="faint">
-          Captain @{captain.username} manages the roster, submits scores, and confirms results.
-        </p>
+        <p className="faint">Captain @{captain.username} manages the roster, submits scores, and confirms results.</p>
       )}
     </div>
   )

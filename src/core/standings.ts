@@ -70,6 +70,22 @@ function compareRows(a: StandingRow, b: StandingRow, league: League, verified: M
   return 0
 }
 
+export type FormResult = 'W' | 'D' | 'L'
+
+/** Last `limit` verified results for a team, oldest → newest. */
+export function formGuide(teamId: string, matches: Match[], limit = 5): FormResult[] {
+  return matches
+    .filter((m) => m.status === 'official' && m.result && (m.homeTeamId === teamId || m.awayTeamId === teamId))
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+    .slice(-limit)
+    .map((m) => {
+      const isHome = m.homeTeamId === teamId
+      const scored = isHome ? m.result!.homeScore : m.result!.awayScore
+      const conceded = isHome ? m.result!.awayScore : m.result!.homeScore
+      return scored > conceded ? 'W' : scored === conceded ? 'D' : 'L'
+    })
+}
+
 /** Positive if b beat a on aggregate points in their direct meetings. */
 function headToHead(aId: string, bId: string, verified: Match[], league: League): number {
   let aPts = 0

@@ -28,7 +28,7 @@ type Action =
   | { type: 'notify'; text: string; kind: Notification['kind'] }
   | { type: 'dismiss'; id: number }
 
-const STORAGE_KEY = 'leagueforge-state-v1'
+const STORAGE_KEY = 'leagueforge-state-v2'
 let notifSeq = 1
 
 function loadInitialState(): AppState {

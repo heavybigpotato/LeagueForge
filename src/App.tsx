@@ -1,6 +1,7 @@
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { StoreProvider, useStore } from './store/store'
-import { Toasts } from './ui/components'
+import { Avatar, Toasts } from './ui/components'
+import { BrandMark, Icon } from './ui/icons'
 import { HomeScreen } from './ui/HomeScreen'
 import { CreateLeagueScreen } from './ui/CreateLeagueScreen'
 import { LeagueScreen } from './ui/LeagueScreen'
@@ -32,13 +33,16 @@ export default function App() {
           <Toasts />
           <nav className="bottomnav">
             <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
-              <span className="icon">🏆</span>Leagues
+              <Icon name="home" size={20} />
+              Home
             </NavLink>
             <NavLink to="/join" className={({ isActive }) => (isActive ? 'active' : '')}>
-              <span className="icon">🎟️</span>Join
+              <Icon name="ticket" size={20} />
+              Join
             </NavLink>
             <NavLink to="/profile" className={({ isActive }) => (isActive ? 'active' : '')}>
-              <span className="icon">👤</span>Profile
+              <Icon name="user" size={20} />
+              Profile
             </NavLink>
           </nav>
         </div>
@@ -51,12 +55,15 @@ function TopBar() {
   const { currentUser } = useStore()
   return (
     <header className="topbar">
-      <span className="brand">
-        League<span className="forge">Forge</span>
+      <BrandMark size={24} />
+      <span className="wordmark">
+        League<em>Forge</em>
       </span>
       <span className="spacer" />
-      <span className="faint">@{currentUser.username}</span>
-      <span className="avatar">{currentUser.username.slice(0, 2).toUpperCase()}</span>
+      <span className="who">
+        @{currentUser.username}
+        <Avatar user={currentUser} size="sm" />
+      </span>
     </header>
   )
 }

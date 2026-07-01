@@ -2,15 +2,16 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import type { EvidenceKind } from '../core/types'
-import { EmptyState, TeamLogo, formatDate, formatWhen } from './components'
+import { EmptyState, TeamLogo, formatDate, formatTime, formatWhen } from './components'
 import { MatchBadge } from './LeagueScreen'
+import { Icon } from './icons'
 
-const EVIDENCE_KINDS: { kind: EvidenceKind; label: string }[] = [
-  { kind: 'photo', label: '📷 Photo' },
-  { kind: 'video', label: '🎬 Video' },
-  { kind: 'score-sheet', label: '📄 Score sheet' },
-  { kind: 'referee-report', label: '🧑‍⚖️ Referee report' },
-  { kind: 'witness', label: '🙋 Witness' },
+const EVIDENCE_KINDS: { kind: EvidenceKind; label: string; icon: string }[] = [
+  { kind: 'photo', label: 'Photo', icon: 'camera' },
+  { kind: 'video', label: 'Video', icon: 'eye' },
+  { kind: 'score-sheet', label: 'Score sheet', icon: 'scroll' },
+  { kind: 'referee-report', label: 'Referee report', icon: 'whistle' },
+  { kind: 'witness', label: 'Witness', icon: 'user' },
 ]
 
 export function MatchScreen() {
@@ -24,7 +25,7 @@ export function MatchScreen() {
   const [kind, setKind] = useState<EvidenceKind>('photo')
 
   const match = state.matches.find((m) => m.id === matchId)
-  if (!match) return <EmptyState icon="❓">Match not found.</EmptyState>
+  if (!match) return <EmptyState icon="alert">Match not found.</EmptyState>
   const league = state.leagues.find((l) => l.id === match.leagueId)!
   const home = state.teams.find((t) => t.id === match.homeTeamId)!
   const away = state.teams.find((t) => t.id === match.awayTeamId)!
@@ -40,51 +41,62 @@ export function MatchScreen() {
 
   return (
     <div>
-      <Link to={`/league/${league.id}`} className="backlink">← {league.name}</Link>
-      <div className="card" style={{ marginTop: 12 }}>
-        <div className="row">
-          <span className="faint">Round {match.round} · {formatDate(match.scheduledAt)} · {match.venue}</span>
+      <Link to={`/league/${league.id}`} className="backlink"><Icon name="arrowLeft" size={15} /> {league.name}</Link>
+
+      <div className="card flush fixture" style={{ marginTop: 12 }}>
+        <div className="fixture-top">
+          <span>Round {match.round}</span>
+          <span>·</span>
+          <span>{formatDate(match.scheduledAt)}, {formatTime(match.scheduledAt)}</span>
+          <span>·</span>
+          <span className="truncate">{match.venue}</span>
           <span className="grow" />
           <MatchBadge status={match.status} />
         </div>
-        <div className="scoreline">
-          <div className="team"><TeamLogo team={home} size={44} />{home.name}</div>
-          <div className="score">
-            {score ? <>{score.homeScore}<span className="dash">–</span>{score.awayScore}</> : <span className="dash">vs</span>}
+        <div className="scoreline" style={{ padding: '20px 12px' }}>
+          <div className="team"><TeamLogo team={home} size={50} />{home.name}</div>
+          <div className="score num" style={{ fontSize: 38 }}>
+            {score ? <>{score.homeScore}<span className="dash">–</span>{score.awayScore}</> : <span className="vs">VS</span>}
           </div>
-          <div className="team"><TeamLogo team={away} size={44} />{away.name}</div>
+          <div className="team"><TeamLogo team={away} size={50} />{away.name}</div>
         </div>
         {match.status === 'awaiting-confirmation' && (
-          <p className="faint" style={{ textAlign: 'center' }}>
+          <div className="statusnote">
+            <Icon name="clock" size={14} />
             Submitted by {submittedBy === home.id ? home.name : away.name} — waiting for the opposing captain. Standings are not affected yet.
-          </p>
+          </div>
         )}
         {match.status === 'disputed' && (
-          <p className="faint" style={{ textAlign: 'center' }}>
-            ⚠️ Disputed: “{match.disputeReason}”. Standings frozen; commissioner notified; evidence requested.
-          </p>
+          <div className="statusnote" style={{ color: 'var(--red)' }}>
+            <Icon name="alert" size={14} />
+            Disputed: “{match.disputeReason}”. Standings frozen; commissioner notified; evidence requested.
+          </div>
         )}
         {match.result && (
-          <p className="faint" style={{ textAlign: 'center' }}>
-            ✓ Verified by {match.result.verifiedBy} · {formatWhen(match.result.verifiedAt)}
-          </p>
+          <div className="statusnote" style={{ color: 'var(--green)' }}>
+            <Icon name="shieldCheck" size={14} />
+            Verified by {match.result.verifiedBy} · {formatWhen(match.result.verifiedAt)}
+          </div>
         )}
       </div>
 
       {match.status === 'scheduled' && myTeam && !checkedIn && (
         <button className="btn" onClick={() => store.checkIn(match.id, myTeam.id)}>
-          📍 QR Check-in (GPS validated)
+          <Icon name="qr" size={16} /> QR Check-in <span style={{ color: 'var(--faint)', fontWeight: 600 }}>(GPS validated)</span>
         </button>
       )}
       {match.checkIns.length > 0 && (
-        <p className="faint">
-          {match.checkIns.length} player{match.checkIns.length === 1 ? '' : 's'} checked in
+        <p className="faint" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="mapPin" size={13} /> {match.checkIns.length} player{match.checkIns.length === 1 ? '' : 's'} checked in
         </p>
       )}
 
       {match.status === 'scheduled' && isCaptainOfMine && (
         <div className="card">
-          <strong>Submit final score</strong>
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--volt)' }}><Icon name="send" size={16} /></span>
+            <strong>Submit final score</strong>
+          </div>
           <p className="faint">The opposing captain must confirm before this result becomes official.</p>
           <div className="fieldgrid">
             <label className="field">
@@ -104,21 +116,30 @@ export function MatchScreen() {
 
       {match.status === 'awaiting-confirmation' && isOpposingCaptain && (
         <div className="card">
-          <strong>Respond to submitted score</strong>
-          <div className="btnrow">
-            <button className="btn primary" onClick={() => store.confirmScore(match.id)}>✓ Confirm</button>
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--blue)' }}><Icon name="whistle" size={16} /></span>
+            <strong>Respond to submitted score</strong>
           </div>
-          <label className="field" style={{ marginTop: 12 }}>
+          <p className="faint">Confirming makes the result official and updates the standings immediately.</p>
+          <button className="btn primary" onClick={() => store.confirmScore(match.id)}>
+            <Icon name="check" size={16} /> Confirm result
+          </button>
+          <label className="field" style={{ marginTop: 14 }}>
             <span>Dispute reason</span>
             <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="What actually happened?" />
           </label>
-          <button className="btn danger" onClick={() => store.disputeScore(match.id, reason)}>⚠ Dispute</button>
+          <button className="btn danger" onClick={() => store.disputeScore(match.id, reason)}>
+            <Icon name="alert" size={15} /> Dispute
+          </button>
         </div>
       )}
 
       {match.status === 'disputed' && (isCommissioner || isReferee) && (
         <div className="card">
-          <strong>{isCommissioner ? 'Commissioner' : 'Referee'} resolution</strong>
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--gold)' }}><Icon name="shield" size={16} /></span>
+            <strong>{isCommissioner ? 'Commissioner' : 'Referee'} resolution</strong>
+          </div>
           <p className="faint">Review the evidence below and enter the final, official score.</p>
           <div className="fieldgrid">
             <label className="field">
@@ -140,14 +161,17 @@ export function MatchScreen() {
       {match.evidence.length === 0 && <p className="faint">No evidence uploaded yet.</p>}
       {match.evidence.map((ev) => {
         const u = state.users.find((x) => x.id === ev.uploadedBy)
+        const meta = EVIDENCE_KINDS.find((k) => k.kind === ev.kind)
         return (
           <div className="card" key={ev.id}>
             <div className="row">
-              <span>{EVIDENCE_KINDS.find((k) => k.kind === ev.kind)?.label ?? ev.kind}</span>
+              <span className="row" style={{ gap: 7, color: 'var(--blue)', fontWeight: 700, fontSize: 13 }}>
+                <Icon name={meta?.icon ?? 'camera'} size={15} /> {meta?.label ?? ev.kind}
+              </span>
               <span className="grow" />
               <span className="faint">{formatWhen(ev.at)}</span>
             </div>
-            <div className="muted" style={{ marginTop: 6 }}>{ev.note}</div>
+            <div className="muted" style={{ marginTop: 7 }}>{ev.note}</div>
             <div className="faint" style={{ marginTop: 4 }}>by @{u?.username}</div>
           </div>
         )
@@ -155,7 +179,7 @@ export function MatchScreen() {
       {(myTeam || isCommissioner || isReferee) && match.status !== 'official' && (
         <div className="card">
           <strong>Add evidence</strong>
-          <div className="fieldgrid" style={{ marginTop: 8 }}>
+          <div className="fieldgrid" style={{ marginTop: 10 }}>
             <label className="field">
               <span>Type</span>
               <select value={kind} onChange={(e) => setKind(e.target.value as EvidenceKind)}>
@@ -170,7 +194,7 @@ export function MatchScreen() {
             </label>
           </div>
           <button className="btn" onClick={() => { store.addEvidence(match.id, kind, note); setNote('') }}>
-            Upload
+            <Icon name="plus" size={15} /> Upload
           </button>
         </div>
       )}
