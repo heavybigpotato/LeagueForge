@@ -5,7 +5,7 @@ import { createLeague } from './league'
 import { approvePlayer, createPendingTeam, removePlayer, requestJoin, resolveMinPlayers } from './team'
 import { generateRoundRobin } from './schedule'
 import { checkIn, confirmScore, disputeScore, resolveDispute, submitScore } from './match'
-import { computeStandings } from './standings'
+import { computeStandings, formGuide } from './standings'
 import { newInviteCode, inviteLink } from './ids'
 import { auditEntry } from './audit'
 import { evaluateSeasonAchievements } from './achievements'
@@ -325,6 +325,35 @@ describe('standings tie-breakers and achievements', () => {
     expect(table[0].teamId).toBe(alpha.id)
     expect(table[0].points).toBe(table[1].points)
     expect(table[1].teamId).toBe(beta.id)
+  })
+
+  it('form guide reflects only verified results, oldest to newest', () => {
+    const league = makeLeague(makeUser())
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [a] = teams
+    const fixtures = generateRoundRobin(league, teams, { double: true })
+    const mine = fixtures.filter((m) => m.homeTeamId === a.id || m.awayTeamId === a.id)
+    const results: Match[] = mine.slice(0, 3).map((m, i): Match => {
+      const aHome = m.homeTeamId === a.id
+      const aScore = i === 0 ? 2 : i === 1 ? 1 : 0 // W, D, L for team A
+      const oppScore = i === 0 ? 0 : i === 1 ? 1 : 3
+      return {
+        ...m,
+        status: 'official',
+        result: { homeScore: aHome ? aScore : oppScore, awayScore: aHome ? oppScore : aScore, verifiedAt: 1, verifiedBy: 'captains' },
+      }
+    })
+    // an unverified submission must not appear in form
+    const pending: Match = { ...mine[3], status: 'awaiting-confirmation' }
+    const sorted = results.slice().sort((x, y) => x.scheduledAt.localeCompare(y.scheduledAt))
+    const expected = sorted.map((m) => {
+      const aHome = m.homeTeamId === a.id
+      const s = aHome ? m.result!.homeScore : m.result!.awayScore
+      const c = aHome ? m.result!.awayScore : m.result!.homeScore
+      return s > c ? 'W' : s === c ? 'D' : 'L'
+    })
+    expect(formGuide(a.id, [...results, pending])).toEqual(expected)
   })
 
   it('awards Champion and Perfect Season from verified results', () => {

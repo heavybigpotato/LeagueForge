@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { PLATFORM_MIN_PLAYERS, type LeaguePrivacy, type PlayoffFormat, type ScheduleFormat, type Sport } from '../core/types'
+import { Icon } from './icons'
 
 const SPORTS: Sport[] = ['football', 'basketball', 'volleyball', 'cricket', 'baseball', 'hockey', 'rugby', 'tennis', 'pickleball', 'esports', 'chess', 'custom']
 
@@ -40,28 +41,25 @@ export function CreateLeagueScreen() {
 
   return (
     <div>
-      <Link to="/" className="backlink">← Back</Link>
+      <Link to="/" className="backlink"><Icon name="arrowLeft" size={15} /> Back</Link>
+      <div className="kicker" style={{ marginTop: 10 }}>New league</div>
       <h1>Create a League</h1>
-      <p className="muted">You will be the commissioner: you approve teams, review disputes, and manage the season.</p>
+      <p className="muted" style={{ marginTop: 0 }}>
+        You will be the commissioner: you approve teams, review disputes, and manage the season.
+      </p>
 
       <label className="field">
         <span>League name</span>
         <input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Downtown Football League" />
       </label>
-      <div className="fieldgrid">
-        <label className="field">
-          <span>Sport</span>
-          <select value={form.sport} onChange={(e) => set('sport', e.target.value as Sport)}>
-            {SPORTS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Logo (emoji)</span>
-          <input value={form.logo} onChange={(e) => set('logo', e.target.value)} />
-        </label>
-      </div>
+      <label className="field">
+        <span>Sport</span>
+        <select value={form.sport} onChange={(e) => set('sport', e.target.value as Sport)}>
+          {SPORTS.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </label>
       <label className="field">
         <span>Description</span>
         <textarea rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
@@ -115,8 +113,11 @@ export function CreateLeagueScreen() {
           </select>
         </label>
       </div>
-      <p className="faint">
-        Roster minimum can be raised for large-squad sports but never below the platform floor of {PLATFORM_MIN_PLAYERS} verified players.
+      <p className="faint" style={{ display: 'flex', gap: 8 }}>
+        <Icon name="shield" size={14} />
+        <span>
+          Roster minimum can be raised for large-squad sports but never below the platform floor of {PLATFORM_MIN_PLAYERS} verified players.
+        </span>
       </p>
       <button className="btn primary" onClick={submit}>Create League</button>
     </div>

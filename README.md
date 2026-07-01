@@ -32,11 +32,15 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
   - `audit.ts` — append-only, frozen audit entries; there is deliberately no edit/delete API.
   - `achievements.ts` — season awards (Champion, Perfect Season, Top Defense) derived from
     verified results.
-- **Mobile-first app** (`src/ui/`, `src/store/`) — a React client styled like a premium
-  native app: league dashboard (standings / schedule / teams / audit log), team pages with
-  activation progress and invite codes, match pages with score submission, confirmation,
-  disputes, evidence, and check-ins, plus a career profile. A demo identity switcher lets
-  you experience the commissioner, captain, and player roles against the same league.
+- **Mobile-first app** (`src/ui/`, `src/store/`) — a React client with a native-app feel
+  and its own design system: bundled Outfit typography, a hand-tuned SVG icon set,
+  generated team crests (built from each team's colors and monogram — no uploads, no
+  emoji), and a volt-on-charcoal athletic theme. The home screen is a dashboard that
+  surfaces what needs you right now (scores to confirm, disputes to resolve, join requests,
+  activation progress), plus a league hub (standings with form guide / schedule / teams /
+  audit log), ticket-style invite cards, match pages covering the full verification flow,
+  and a career profile. A demo identity switcher lets you experience the commissioner,
+  captain, and player roles against the same league.
 
 State persists to `localStorage`; the app ships with a seeded demo league so it feels alive
 on first launch (three official teams, one team pending at 9/11, a verified result, a score

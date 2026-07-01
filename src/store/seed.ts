@@ -61,7 +61,7 @@ export function seedDemoData(): AppState {
       minTeams: 4,
       minPlayersPerTeam: 11,
       maxPlayersPerTeam: 22,
-      scheduleFormat: 'round-robin',
+      scheduleFormat: 'double-round-robin',
       playoffFormat: 'single-elimination',
       scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
       tieBreakers: ['goal-difference', 'goals-for', 'head-to-head'],
@@ -92,9 +92,9 @@ export function seedDemoData(): AppState {
     return { team, captain }
   }
 
-  const thunder = buildTeam('Thunder FC', '⚡', '#f5c518', '#111827', 'Founded 2021. Fast wings, faster counterattacks.', 11)
+  const thunder = buildTeam('Thunder FC', '⚡', '#f2c14e', '#1b2333', 'Founded 2021. Fast wings, faster counterattacks.', 11)
   const river = buildTeam('River Hawks', '🦅', '#2563eb', '#e0e7ff', 'East-side club with a legendary back line.', 11)
-  const iron = buildTeam('Iron Wolves', '🐺', '#6b7280', '#111111', 'Defense wins championships.', 11)
+  const iron = buildTeam('Iron Wolves', '🐺', '#7c8594', '#e2e6ec', 'Defense wins championships.', 11)
   // Still pending at 9/11, with one join request waiting for the captain.
   const nomads = buildTeam('Northside Nomads', '🧭', '#059669', '#d1fae5', 'New crew, hungry for a first season.', 9)
   const applicant = makeUser(40)
@@ -106,7 +106,7 @@ export function seedDemoData(): AppState {
     audit = [...audit, ...joined.audit]
   }
 
-  const fixtures = generateRoundRobin(league, teams, { startDate: new Date('2026-06-20T18:00:00Z') })
+  const fixtures = generateRoundRobin(league, teams, { double: true, startDate: new Date('2026-06-20T18:00:00Z') })
   const matches: Match[] = [...fixtures]
   audit = [
     ...audit,
