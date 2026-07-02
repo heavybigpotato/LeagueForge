@@ -9,8 +9,7 @@ export function ProfileScreen() {
   const myLeagues = state.leagues.filter((l) => l.commissionerId === currentUser.id)
 
   // Switchable identities: accounts created on this device, plus captains and
-  // commissioners of leagues the current user is part of (this is how you act
-  // as different roles in a practice league).
+  // commissioners of leagues the current user is part of.
   const relevantLeagueIds = new Set([
     ...myLeagues.map((l) => l.id),
     ...myTeams.map((t) => t.leagueId),

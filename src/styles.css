@@ -684,6 +684,97 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
 .toast.info .tico { color: var(--blue); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
 
+/* ------------------------------------------------ match day live */
+.live {
+  min-height: calc(100dvh - 0px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background:
+    radial-gradient(600px 300px at 50% -10%, rgba(201, 245, 66, 0.08), transparent 60%),
+    var(--bg);
+}
+.live-top { display: flex; align-items: center; justify-content: space-between; }
+.live-clock {
+  text-align: center;
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1;
+  margin-top: 8px;
+}
+.live-clock-hint {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-top: 8px;
+}
+.live-board {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.live-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.live-side > :first-child { margin-bottom: 2px; }
+.live-name { font-weight: 800; font-size: 14px; max-width: 100%; text-align: center; }
+.live-score { font-size: 96px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
+.live-dash { font-size: 48px; color: var(--faint); font-weight: 700; padding-bottom: 60px; }
+.live-goal {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  transition: transform 0.08s;
+}
+.live-goal:active { transform: scale(0.92); }
+.live-undo {
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.live-undo:disabled { opacity: 0.3; }
+
+/* ------------------------------------------------ rsvp + power rankings */
+.rsvp-strip { display: flex; gap: 8px; margin-top: 10px; }
+.rsvp-strip .btn.on { border-color: var(--volt); color: var(--volt); background: var(--volt-soft); }
+
+.pr-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.pr-row + .pr-row { border-top: 1px solid var(--border-soft); }
+.pr-rank { width: 24px; text-align: center; font-weight: 800; color: var(--faint); }
+.pr-move { width: 40px; text-align: right; font-weight: 800; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pr-move.up { color: var(--green); }
+.pr-move.down { color: var(--red); }
+.pr-move.same { color: var(--faint); }
+.pr-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
+.pr-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #8fc025, var(--volt)); }
+.pr-rating { width: 34px; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+
 /* ------------------------------------------------ onboarding */
 .democode {
   display: flex;

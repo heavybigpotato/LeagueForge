@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { computeStandings, formGuide } from '../core/standings'
 import { bracket, bracketSize, playoffLabel, playoffsStarted } from '../core/playoffs'
+import { powerRankings } from '../core/powerRankings'
+import { shareStandingsCard } from './shareCards'
 import type { Match, Team } from '../core/types'
 import { Badge, EmptyState, FormPills, RosterProgress, TeamLogo, formatDate, formatWhen } from './components'
 import { Icon, LeagueBadge } from './icons'
@@ -147,6 +149,7 @@ function Standings({ leagueId }: { leagueId: string }) {
     return <EmptyState icon="activity">Standings appear once teams become official. Pending teams are never listed.</EmptyState>
   }
   return (
+    <>
     <div className="card flush">
       {frozen && (
         <div className="statusnote" style={{ borderTop: 'none', color: 'var(--gold)' }}>
@@ -188,6 +191,49 @@ function Standings({ leagueId }: { leagueId: string }) {
         {qualSpots > 0 && ` · top ${qualSpots} ${started ? 'qualified for' : 'qualify for'} the playoffs`}
       </div>
     </div>
+
+    {rows.some((r) => r.played > 0) && (
+      <button className="btn" onClick={() => shareStandingsCard(league, rows, teams)}>
+        <Icon name="send" size={15} /> Share standings card
+      </button>
+    )}
+
+    <PowerRankingsCard leagueId={leagueId} />
+    </>
+  )
+}
+
+/** Weekly power rankings: quality of play, not just points. */
+function PowerRankingsCard({ leagueId }: { leagueId: string }) {
+  const { state } = useStore()
+  const league = state.leagues.find((l) => l.id === leagueId)!
+  const teams = state.teams.filter((t) => t.leagueId === leagueId)
+  const ranks = powerRankings(league, teams, state.matches)
+  if (ranks.length < 2 || ranks.every((r) => r.rating === ranks[0].rating)) return null
+  return (
+    <>
+      <h2>Power Rankings</h2>
+      <div className="card">
+        {ranks.map((r) => {
+          const team = teams.find((t) => t.id === r.teamId)!
+          return (
+            <div className="pr-row" key={r.teamId}>
+              <span className="pr-rank">{r.rank}</span>
+              <TeamLogo team={team} size={26} />
+              <span className="grow truncate" style={{ fontWeight: 700, fontSize: 13.5 }}>{team.name}</span>
+              <span className={`pr-move ${r.movement > 0 ? 'up' : r.movement < 0 ? 'down' : 'same'}`}>
+                {r.movement > 0 ? `▲${r.movement}` : r.movement < 0 ? `▼${-r.movement}` : '—'}
+              </span>
+              <span className="pr-bar"><i style={{ width: `${r.rating}%` }} /></span>
+              <span className="pr-rating num">{r.rating}</span>
+            </div>
+          )
+        })}
+        <p className="faint" style={{ marginBottom: 0 }}>
+          Rewards form, margin (capped), and strength of opponent — recent matches weigh more. Verified results only.
+        </p>
+      </div>
+    </>
   )
 }
 

@@ -3,6 +3,7 @@ import { useStore } from '../store/store'
 import { inviteLink } from '../core/ids'
 import { computeTeamStats } from '../core/teamStats'
 import { formGuide } from '../core/standings'
+import { bracket } from '../core/playoffs'
 import type { Team } from '../core/types'
 import { Avatar, Badge, EmptyState, FormPills, RosterProgress, TeamLogo, VerificationChecks } from './components'
 import { Icon } from './icons'
@@ -18,6 +19,7 @@ export function TeamScreen() {
   const captain = state.users.find((u) => u.id === team.captainId)
   const isCaptain = currentUser.id === team.captainId
   const userOf = (id: string) => state.users.find((u) => u.id === id)
+  const championships = state.leagues.filter((l) => bracket(l.id, state.matches)?.championTeamId === team.id).length
 
   return (
     <div>
@@ -36,6 +38,7 @@ export function TeamScreen() {
               <Badge kind={team.status === 'official' ? 'official' : 'pending'}>
                 {team.status === 'official' ? 'Official Team' : 'Pending'}
               </Badge>
+              {championships > 0 && <Badge kind="pending">🏆 Champions{championships > 1 ? ` ×${championships}` : ''}</Badge>}
               {team.rosterLocked && <Badge kind="neutral"><Icon name="lock" size={10} /> Roster locked</Badge>}
             </div>
           </div>

@@ -4,7 +4,8 @@ import { PLATFORM_MIN_PLAYERS } from './types'
 import { createLeague } from './league'
 import { approvePlayer, createPendingTeam, removePlayer, requestJoin, resolveMinPlayers } from './team'
 import { generateRoundRobin } from './schedule'
-import { checkIn, confirmScore, disputeScore, resolveDispute, submitScore } from './match'
+import { checkIn, confirmScore, disputeScore, resolveDispute, rsvp, rsvpCount, submitScore } from './match'
+import { powerRankings } from './powerRankings'
 import { computeStandings, formGuide } from './standings'
 import { newInviteCode, inviteLink } from './ids'
 import { auditEntry } from './audit'
@@ -299,6 +300,24 @@ describe('match verification', () => {
     expect(resolved.result?.verifiedBy).toBe('referee')
   })
 
+  it('RSVPs: rostered players only, changeable, closed once the match is played', () => {
+    const { league, home, away, match } = setup()
+    const player = makeUser()
+    expect(() => rsvp(league, match, player, home.team, 'in')).toThrow(/rostered/)
+
+    const memberId = home.team.memberIds[1]
+    const member: User = { ...makeUser(), id: memberId }
+    let m = rsvp(league, match, member, home.team, 'in').match
+    expect(rsvpCount(m, home.team.id)).toEqual({ in: 1, out: 0 })
+    // changing your answer replaces it, never duplicates
+    m = rsvp(league, m, member, home.team, 'out').match
+    expect(rsvpCount(m, home.team.id)).toEqual({ in: 0, out: 1 })
+    expect(rsvpCount(m, away.team.id)).toEqual({ in: 0, out: 0 })
+
+    const played = submitScore(league, m, home.team, home.captain, 1, 0).match
+    expect(() => rsvp(league, played, member, home.team, 'in')).toThrow(/before the match/)
+  })
+
   it('records QR check-ins once per player', () => {
     const { league, home, match } = setup()
     const { match: checked } = checkIn(league, match, home.captain, home.team.id, true)
@@ -530,6 +549,46 @@ describe('standings tie-breakers and achievements', () => {
       return s > c ? 'W' : s === c ? 'D' : 'L'
     })
     expect(formGuide(a.id, [...results, pending])).toEqual(expected)
+  })
+
+  it('power rankings order by quality, ignore playoffs, and report movement', () => {
+    const league = makeLeague(makeUser())
+    const teams: Team[] = []
+    for (const name of ['Strong', 'Mid', 'Weak'] as const) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [strong, , weak] = teams
+    const fixtures = generateRoundRobin(league, teams)
+    const officialize = (m: Match, h: number, a: number): Match => ({
+      ...m,
+      status: 'official',
+      result: { homeScore: h, awayScore: a, verifiedAt: 1, verifiedBy: 'captains' },
+    })
+    const rank = (id: string) => teams.findIndex((t) => t.id === id)
+    const results = fixtures.map((m) => {
+      const homeBetter = rank(m.homeTeamId) < rank(m.awayTeamId)
+      return officialize(m, homeBetter ? 2 : 0, homeBetter ? 0 : 2)
+    })
+
+    const pr = powerRankings(league, teams, results)
+    expect(pr).toHaveLength(3)
+    expect(pr[0].teamId).toBe(strong.id)
+    expect(pr[2].teamId).toBe(weak.id)
+    expect(pr[0].rating).toBeGreaterThan(pr[2].rating)
+    expect(pr.every((r) => r.rating >= 0 && r.rating <= 100)).toBe(true)
+
+    // playoff results never affect the power rankings
+    const playoffUpset: Match = {
+      ...officialize(fixtures[0], 0, 9),
+      id: 'po1',
+      stage: 'playoff',
+      playoffRound: 1,
+      playoffSlot: 0,
+      homeTeamId: strong.id,
+      awayTeamId: weak.id,
+    }
+    expect(powerRankings(league, teams, [...results, playoffUpset])).toEqual(pr)
+
+    // movement: sums to zero and reacts to the latest round
+    expect(pr.reduce((s, r) => s + r.movement, 0)).toBe(0)
   })
 
   it('awards Champion and Perfect Season from verified results', () => {

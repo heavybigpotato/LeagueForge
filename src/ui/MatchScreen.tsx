@@ -6,6 +6,8 @@ import { EmptyState, TeamLogo, formatDate, formatTime, formatWhen } from './comp
 import { MatchBadge } from './LeagueScreen'
 import { Icon } from './icons'
 import { playoffLabel } from '../core/playoffs'
+import { rsvpCount } from '../core/match'
+import { shareResultCard } from './shareCards'
 import type { Match, Team } from '../core/types'
 
 const EVIDENCE_KINDS: { kind: EvidenceKind; label: string; icon: string }[] = [
@@ -39,6 +41,7 @@ export function MatchScreen() {
   const isCommissioner = currentUser.id === league.commissionerId
   const isReferee = league.refereeIds.includes(currentUser.id)
   const checkedIn = match.checkIns.some((c) => c.userId === currentUser.id)
+  const myRsvp = (match.rsvps ?? []).find((r) => r.userId === currentUser.id)?.status
   const score = match.result ?? match.submission
 
   return (
@@ -86,9 +89,52 @@ export function MatchScreen() {
         )}
       </div>
 
+      {match.status === 'scheduled' && isCaptainOfMine && (
+        <Link to={`/match/${match.id}/live`} className="btn primary" style={{ textDecoration: 'none', marginBottom: 10 }}>
+          <Icon name="gauge" size={17} /> Open Match Day Live scoreboard
+        </Link>
+      )}
+
+      {match.status === 'scheduled' && myTeam && (
+        <div className="card">
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--volt)' }}><Icon name="users" size={16} /></span>
+            <strong className="grow">Who&rsquo;s playing?</strong>
+            <span className="faint num">
+              {home.name.split(' ')[0]} {rsvpCount(match, home.id).in} in · {away.name.split(' ')[0]} {rsvpCount(match, away.id).in} in
+            </span>
+          </div>
+          <div className="rsvp-strip">
+            <button
+              className={`btn small${myRsvp === 'in' ? ' on' : ''}`}
+              onClick={() => store.rsvp(match.id, myTeam.id, 'in')}
+            >
+              <Icon name="check" size={14} /> I&rsquo;m in
+            </button>
+            <button
+              className={`btn small${myRsvp === 'out' ? ' on' : ''}`}
+              onClick={() => store.rsvp(match.id, myTeam.id, 'out')}
+            >
+              <Icon name="x" size={14} /> Can&rsquo;t make it
+            </button>
+          </div>
+          {isCaptainOfMine && rsvpCount(match, myTeam.id).out > 0 && (
+            <p className="faint" style={{ marginBottom: 0 }}>
+              {rsvpCount(match, myTeam.id).out} of your players marked out — check the roster before kickoff.
+            </p>
+          )}
+        </div>
+      )}
+
       {match.status === 'scheduled' && myTeam && !checkedIn && (
         <button className="btn" onClick={() => store.checkIn(match.id, myTeam.id)}>
           <Icon name="qr" size={16} /> QR Check-in <span style={{ color: 'var(--faint)', fontWeight: 600 }}>(GPS validated)</span>
+        </button>
+      )}
+
+      {match.status === 'official' && (
+        <button className="btn" onClick={() => shareResultCard(league, match, home, away)}>
+          <Icon name="send" size={16} /> Share result card
         </button>
       )}
       {match.checkIns.length > 0 && (
