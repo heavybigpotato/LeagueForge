@@ -13,7 +13,9 @@ export function computeStandings(league: League, teams: Team[], matches: Match[]
     ]),
   )
 
-  const verified = matches.filter((m) => m.leagueId === league.id && m.status === 'official' && m.result)
+  const verified = matches.filter(
+    (m) => m.leagueId === league.id && m.status === 'official' && m.result && m.stage !== 'playoff',
+  )
   for (const m of verified) {
     const home = rows.get(m.homeTeamId)
     const away = rows.get(m.awayTeamId)
@@ -72,10 +74,13 @@ function compareRows(a: StandingRow, b: StandingRow, league: League, verified: M
 
 export type FormResult = 'W' | 'D' | 'L'
 
-/** Last `limit` verified results for a team, oldest → newest. */
+/** Last `limit` verified regular-season results for a team, oldest → newest. */
 export function formGuide(teamId: string, matches: Match[], limit = 5): FormResult[] {
   return matches
-    .filter((m) => m.status === 'official' && m.result && (m.homeTeamId === teamId || m.awayTeamId === teamId))
+    .filter(
+      (m) =>
+        m.status === 'official' && m.result && m.stage !== 'playoff' && (m.homeTeamId === teamId || m.awayTeamId === teamId),
+    )
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
     .slice(-limit)
     .map((m) => {

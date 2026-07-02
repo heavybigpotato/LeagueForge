@@ -1,8 +1,12 @@
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { inviteLink } from '../core/ids'
-import { Avatar, Badge, EmptyState, RosterProgress, TeamLogo, VerificationChecks } from './components'
+import { computeTeamStats } from '../core/teamStats'
+import { formGuide } from '../core/standings'
+import type { Team } from '../core/types'
+import { Avatar, Badge, EmptyState, FormPills, RosterProgress, TeamLogo, VerificationChecks } from './components'
 import { Icon } from './icons'
+import { InviteQR } from './InviteQR'
 
 export function TeamScreen() {
   const { teamId } = useParams()
@@ -80,9 +84,11 @@ export function TeamScreen() {
           </p>
           <div className="invite-code">{team.inviteCode}</div>
           <div className="faint" style={{ textAlign: 'center', position: 'relative' }}>{inviteLink(team.inviteCode)}</div>
-          <div className="qr" title="QR code" />
+          <InviteQR code={team.inviteCode} />
         </div>
       )}
+
+      {team.status === 'official' && <SeasonStats team={team} />}
 
       {isCaptain && team.pendingMemberIds.length > 0 && (
         <div className="card">
@@ -133,6 +139,40 @@ export function TeamScreen() {
       </div>
       {captain && (
         <p className="faint">Captain @{captain.username} manages the roster, submits scores, and confirms results.</p>
+      )}
+    </div>
+  )
+}
+
+/** Team-level season statistics — LeagueForge tracks the club, not individuals. */
+function SeasonStats({ team }: { team: Team }) {
+  const { state } = useStore()
+  const leagueMatches = state.matches.filter((m) => m.leagueId === team.leagueId)
+  const s = computeTeamStats(team.id, leagueMatches)
+  if (s.played === 0) return null
+  const opponent = state.teams.find((t) => t.id === s.biggestWin?.opponentTeamId)
+  const streakLabel = s.currentStreak
+    ? `${s.currentStreak.count}${s.currentStreak.type}`
+    : '—'
+  return (
+    <div className="card">
+      <div className="row" style={{ gap: 8, marginBottom: 10 }}>
+        <span style={{ color: 'var(--volt)' }}><Icon name="activity" size={17} /></span>
+        <strong className="grow">Season stats</strong>
+        <FormPills form={formGuide(team.id, leagueMatches)} />
+      </div>
+      <div className="statgrid">
+        <div className="cell"><div className="v">{s.wins}-{s.draws}-{s.losses}</div><div className="k">Record</div></div>
+        <div className="cell"><div className="v">{s.goalsFor}:{s.goalsAgainst}</div><div className="k">Goals</div></div>
+        <div className="cell"><div className="v">{s.cleanSheets}</div><div className="k">Clean sheets</div></div>
+        <div className="cell"><div className="v">{s.home.wins}-{s.home.draws}-{s.home.losses}</div><div className="k">Home</div></div>
+        <div className="cell"><div className="v">{s.away.wins}-{s.away.draws}-{s.away.losses}</div><div className="k">Away</div></div>
+        <div className="cell"><div className="v">{streakLabel}</div><div className="k">Streak</div></div>
+      </div>
+      {s.biggestWin && opponent && (
+        <p className="faint" style={{ marginBottom: 0 }}>
+          Biggest win: {s.biggestWin.scored}–{s.biggestWin.conceded} vs {opponent.name} · longest win streak {s.longestWinStreak}
+        </p>
       )}
     </div>
   )

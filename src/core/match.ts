@@ -36,6 +36,9 @@ export function submitScore(
   if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
     throw new Error('Scores must be non-negative whole numbers.')
   }
+  if (match.stage === 'playoff' && homeScore === awayScore) {
+    throw new Error('Playoff matches cannot end in a draw — play it out until there is a winner.')
+  }
   return {
     match: {
       ...match,
@@ -86,6 +89,9 @@ export function resolveDispute(
   now: number = Date.now(),
 ): MatchEvent {
   if (match.status !== 'disputed') throw new Error('Only disputed matches can be resolved.')
+  if (match.stage === 'playoff' && homeScore === awayScore) {
+    throw new Error('Playoff matches cannot end in a draw — record a winner.')
+  }
   const isReferee = league.refereeIds.includes(resolver.id)
   if (resolver.id !== league.commissionerId && !isReferee) {
     throw new Error('Only the commissioner or an assigned referee can resolve disputes.')

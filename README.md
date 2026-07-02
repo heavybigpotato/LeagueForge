@@ -2,6 +2,12 @@
 
 **The definitive platform for creating, managing, and competing in long-term leagues.**
 
+**▶ Live app: https://heavybigpotato.github.io/LeagueForge/**
+
+On iPhone: open that link in Safari, tap **Share → Add to Home Screen**, and LeagueForge
+installs as a full-screen app with its own icon and offline support (it's a PWA — no App
+Store, no setup).
+
 LeagueForge is built around trust, competition, and league integrity: every player has a
 verified identity, every team is earned, every result is verified, and every action is
 recorded in an immutable audit log. It aims to feel like professional league management
@@ -28,7 +34,15 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
     uploads and QR/GPS check-ins.
   - `schedule.ts` — round-robin / double round-robin fixture generation for official teams only.
   - `standings.ts` — standings derived exclusively from verified results, with configurable
-    points and tie-breakers (goal difference, goals for, head-to-head, win %).
+    points and tie-breakers (goal difference, goals for, head-to-head, win %), plus a
+    last-5 form guide.
+  - `playoffs.ts` — single-elimination playoffs seeded from the verified standings
+    (1v4/2v3 bracket order), stored as ordinary matches so every playoff result goes
+    through the same two-captain verification; winners auto-advance when results are
+    verified, playoff matches can never end in a draw or touch the standings, and the
+    champion is crowned when the final is verified.
+  - `teamStats.ts` — team-level season statistics (record, home/away splits, streaks,
+    clean sheets, biggest win). LeagueForge deliberately tracks the club, not individuals.
   - `audit.ts` — append-only, frozen audit entries; there is deliberately no edit/delete API.
   - `achievements.ts` — season awards (Champion, Perfect Season, Top Defense) derived from
     verified results.
@@ -42,8 +56,17 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
   and a career profile. A demo identity switcher lets you experience the commissioner,
   captain, and player roles against the same league.
 
+  The league hub adds a **Playoffs tab with a live bracket view** (ties, auto-advancing
+  winners, a gold champions card, and season honors), the standings mark the playoff
+  qualification zone, match pages show team-level head-to-head history, and invite
+  tickets render a **real scannable QR code** that deep-links into the join flow.
+- **Installable PWA** — web app manifest, generated app icons, iOS home-screen support,
+  and a service worker (network-first navigations, cache-first hashed assets) so the
+  installed app launches instantly and works offline. Deployed to GitHub Pages on every
+  push to `main` (`.github/workflows/deploy.yml`).
+
 State persists to `localStorage`; the app ships with a seeded demo league so it feels alive
-on first launch (three official teams, one team pending at 9/11, a verified result, a score
+on first launch (four official teams, one team pending at 9/11, a verified result, a score
 awaiting confirmation, and an open dispute with evidence).
 
 ## Getting started

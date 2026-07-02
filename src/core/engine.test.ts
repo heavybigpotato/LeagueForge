@@ -9,6 +9,8 @@ import { computeStandings, formGuide } from './standings'
 import { newInviteCode, inviteLink } from './ids'
 import { auditEntry } from './audit'
 import { evaluateSeasonAchievements } from './achievements'
+import { advancePlayoffs, bracket, bracketSize, startPlayoffs, winnerOf } from './playoffs'
+import { computeTeamStats } from './teamStats'
 
 let userSeq = 0
 function makeUser(overrides: Partial<User> = {}): User {
@@ -294,6 +296,149 @@ describe('audit log', () => {
     expect(joined.audit.map((a) => a.action)).toEqual(['team.player-joined'])
     const approved = approvePlayer(league, joined.team, captain.id, p)
     expect(approved.audit.map((a) => a.action)).toEqual(['team.player-approved'])
+  })
+})
+
+describe('playoffs', () => {
+  function officialize(m: Match, homeScore: number, awayScore: number): Match {
+    return { ...m, status: 'official', result: { homeScore, awayScore, verifiedAt: 1, verifiedBy: 'captains' } }
+  }
+
+  function leagueWithFourTeams() {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const teams: Team[] = []
+    for (const name of ['One', 'Two', 'Three', 'Four']) teams.push(buildOfficialTeam(league, name, teams).team)
+    // regular season: One > Two > Three > Four on points
+    const fixtures = generateRoundRobin(league, teams)
+    const rank = (id: string) => teams.findIndex((t) => t.id === id)
+    const season = fixtures.map((m) => {
+      const homeBetter = rank(m.homeTeamId) < rank(m.awayTeamId)
+      return officialize(m, homeBetter ? 2 : 0, homeBetter ? 0 : 2)
+    })
+    return { commissioner, league, teams, season }
+  }
+
+  it('bracket size is the largest power of two that fits', () => {
+    expect(bracketSize(2)).toBe(2)
+    expect(bracketSize(3)).toBe(2)
+    expect(bracketSize(4)).toBe(4)
+    expect(bracketSize(7)).toBe(4)
+    expect(bracketSize(9)).toBe(8)
+  })
+
+  it('only the commissioner can start playoffs, seeded 1v4 / 2v3, once', () => {
+    const { commissioner, league, teams, season } = leagueWithFourTeams()
+    expect(() => startPlayoffs(league, teams, season, teams[0].id)).toThrow(/commissioner/)
+
+    const started = startPlayoffs(league, teams, season, commissioner.id)
+    expect(started.matches).toHaveLength(2)
+    expect(started.matches.every((m) => m.stage === 'playoff' && m.playoffRound === 1)).toBe(true)
+    const semi1 = started.matches.find((m) => m.playoffSlot === 0)!
+    const semi2 = started.matches.find((m) => m.playoffSlot === 1)!
+    expect([semi1.homeTeamId, semi1.awayTeamId]).toEqual([teams[0].id, teams[3].id]) // 1 v 4
+    expect([semi2.homeTeamId, semi2.awayTeamId]).toEqual([teams[1].id, teams[2].id]) // 2 v 3
+    expect(started.audit[0].action).toBe('playoffs.started')
+
+    expect(() => startPlayoffs(league, teams, [...season, ...started.matches], commissioner.id)).toThrow(/already started/)
+  })
+
+  it('playoff matches never count toward standings and cannot end in a draw', () => {
+    const { commissioner, league, teams, season } = leagueWithFourTeams()
+    const { matches: semis } = startPlayoffs(league, teams, season, commissioner.id)
+    const before = computeStandings(league, teams, season)
+    const after = computeStandings(league, teams, [...season, officialize(semis[0], 3, 0)])
+    expect(after).toEqual(before)
+
+    const captain = state(teams[0])
+    expect(() => submitScore(league, semis[0], teams[0], captain, 1, 1)).toThrow(/cannot end in a draw/)
+
+    function state(team: Team): User {
+      return {
+        id: team.captainId, username: 'cap', email: '', phone: '', emailVerified: true, phoneVerified: true,
+        idVerified: false, deviceFingerprint: '', reputation: 0, createdAt: 0,
+      }
+    }
+  })
+
+  it('winners auto-advance to the final and a champion is crowned', () => {
+    const { commissioner, league, teams, season } = leagueWithFourTeams()
+    const { matches: semis } = startPlayoffs(league, teams, season, commissioner.id)
+    let all = [...season, ...semis]
+
+    // nothing advances while the semis are undecided
+    expect(advancePlayoffs(league, all, commissioner.id).matches).toHaveLength(0)
+
+    const semi1 = semis.find((m) => m.playoffSlot === 0)!
+    const semi2 = semis.find((m) => m.playoffSlot === 1)!
+    all = all.map((m) => (m.id === semi1.id ? officialize(m, 2, 1) : m.id === semi2.id ? officialize(m, 0, 1) : m))
+
+    const adv = advancePlayoffs(league, all, commissioner.id)
+    expect(adv.matches).toHaveLength(1)
+    const final = adv.matches[0]
+    expect(final.playoffRound).toBe(2)
+    expect(final.homeTeamId).toBe(teams[0].id) // semi 1 winner (seed 1)
+    expect(final.awayTeamId).toBe(teams[2].id) // semi 2 winner (seed 3 upset)
+    expect(adv.championTeamId).toBeUndefined()
+
+    all = [...all, officialize(final, 1, 3)]
+    const done = advancePlayoffs(league, all, commissioner.id)
+    expect(done.matches).toHaveLength(0)
+    expect(done.championTeamId).toBe(teams[2].id)
+
+    const b = bracket(league.id, all)!
+    expect(b.roundNames).toEqual(['Semifinals', 'Final'])
+    expect(b.rounds[0]).toHaveLength(2)
+    expect(b.rounds[1]).toHaveLength(1)
+    expect(b.championTeamId).toBe(teams[2].id)
+    expect(winnerOf(all.find((m) => m.id === final.id))).toBe(teams[2].id)
+  })
+})
+
+describe('team-level statistics', () => {
+  it('computes record, splits, streaks, clean sheets and biggest win from verified results only', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C'] as const) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [a, b, c] = teams
+    const fixtures = generateRoundRobin(league, teams, { double: true })
+    const between = (h: Team, w: Team) =>
+      fixtures.filter((m) => (m.homeTeamId === h.id && m.awayTeamId === w.id) || (m.homeTeamId === w.id && m.awayTeamId === h.id))
+
+    const officialize = (m: Match, homeScore: number, awayScore: number): Match => ({
+      ...m,
+      status: 'official',
+      result: { homeScore, awayScore, verifiedAt: 1, verifiedBy: 'captains' },
+    })
+    const asA = (m: Match, aGoals: number, oppGoals: number) =>
+      officialize(m, m.homeTeamId === a.id ? aGoals : oppGoals, m.homeTeamId === a.id ? oppGoals : aGoals)
+
+    const [ab1, ab2] = between(a, b)
+    const [ac1] = between(a, c)
+    const results = [asA(ab1, 4, 0), asA(ab2, 2, 1), asA(ac1, 1, 1)]
+    // sort by date to compute expectations regardless of fixture ordering
+    const ordered = results.slice().sort((x, y) => x.scheduledAt.localeCompare(y.scheduledAt))
+    const outcomes = ordered.map((m) => {
+      const isHome = m.homeTeamId === a.id
+      const s = isHome ? m.result!.homeScore : m.result!.awayScore
+      const cc = isHome ? m.result!.awayScore : m.result!.homeScore
+      return s > cc ? 'W' : s === cc ? 'D' : 'L'
+    })
+
+    const unverified: Match = { ...between(a, c)[1], status: 'awaiting-confirmation' }
+    const stats = computeTeamStats(a.id, [...results, unverified])
+    expect(stats.played).toBe(3)
+    expect(stats.wins).toBe(2)
+    expect(stats.draws).toBe(1)
+    expect(stats.goalsFor).toBe(7)
+    expect(stats.goalsAgainst).toBe(2)
+    expect(stats.cleanSheets).toBe(1)
+    expect(stats.biggestWin).toMatchObject({ opponentTeamId: b.id, scored: 4, conceded: 0 })
+    expect(stats.home.wins + stats.away.wins).toBe(2)
+    const lastOutcome = outcomes[outcomes.length - 1]
+    expect(stats.currentStreak?.type).toBe(lastOutcome)
+    expect(stats.longestWinStreak).toBeGreaterThanOrEqual(1)
   })
 })
 
