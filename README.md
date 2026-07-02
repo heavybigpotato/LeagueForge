@@ -20,12 +20,22 @@ The full product specification lives in [`docs/SPEC.md`](docs/SPEC.md).
 This repository contains the LeagueForge core engine and a premium, mobile-first client:
 
 - **Core domain engine** (`src/core/`) — pure, fully unit-tested TypeScript:
-  - `account.ts` — real account creation and identity verification: unique usernames,
+  - `account.ts` — real account creation with **password login** (salted iterated hashes,
+    sign-in required to switch identities) plus identity verification: unique usernames,
     email/phone validation, and 6-digit verification codes that gate every roster action.
     Nothing ships pre-loaded — every user is created through this flow.
-  - `league.ts` — league creation with commissioner role, scoring rules, tie-breakers,
-    privacy, configurable home venue, and validation (the roster minimum can be raised but
-    never drops below the platform floor of **11 verified players**).
+  - `seasons.ts` — a full **multi-season lifecycle**: every match is stamped with its
+    season; ending a season freezes the final table, table leaders, and playoff champion
+    into permanent league history, unlocks rosters, and starts the next campaign with
+    clean standings and a fresh bracket.
+  - `league.ts` — league creation with commissioner role, **custom scoring rules**,
+    tie-breakers, privacy, configurable home venue, and validation (the roster minimum can
+    be raised but never drops below the platform floor of **11 verified players**) — plus
+    commissioner tools: post-creation settings edits, **league announcements**, and
+    **referee assignment** (referees can resolve disputes).
+  - **Knockout Cup format** — beyond round robin and double round robin, a league's whole
+    season can be a single-elimination bracket: drawn from the official teams, no table,
+    same two-captain verification on every tie.
   - `team.ts` — the mandatory **Pending Team** lifecycle: teams are created pending,
     players join via an 8-character invite code / link / QR, captains approve joins, and
     the team **automatically activates** the moment the roster reaches the league minimum.

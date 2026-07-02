@@ -58,12 +58,12 @@ export function bracketSize(officialTeams: number): number {
   return officialTeams >= 2 ? size : 0
 }
 
-export function playoffMatches(leagueId: string, matches: Match[]): Match[] {
-  return matches.filter((m) => m.leagueId === leagueId && m.stage === 'playoff')
+export function playoffMatches(leagueId: string, matches: Match[], season = 1): Match[] {
+  return matches.filter((m) => m.leagueId === leagueId && m.stage === 'playoff' && (m.season ?? 1) === season)
 }
 
-export function playoffsStarted(leagueId: string, matches: Match[]): boolean {
-  return playoffMatches(leagueId, matches).length > 0
+export function playoffsStarted(leagueId: string, matches: Match[], season = 1): boolean {
+  return playoffMatches(leagueId, matches, season).length > 0
 }
 
 /**
@@ -79,7 +79,7 @@ export function startPlayoffs(
 ): { matches: Match[]; audit: AuditEntry[] } {
   if (actorId !== league.commissionerId) throw new Error('Only the commissioner can start the playoffs.')
   if (league.playoffFormat === 'none') throw new Error('This league is configured without playoffs.')
-  if (playoffsStarted(league.id, matches)) throw new Error('The playoffs have already started.')
+  if (playoffsStarted(league.id, matches, league.currentSeason)) throw new Error('The playoffs have already started.')
   const standings = computeStandings(league, teams, matches)
   const size = bracketSize(standings.length)
   if (size < 2) throw new Error('At least 2 official teams are required to start the playoffs.')
@@ -100,6 +100,7 @@ export function startPlayoffs(
       scheduledAt: new Date(baseDate).toISOString(),
       venue: league.homeVenue,
       status: 'scheduled',
+      season: league.currentSeason,
       stage: 'playoff',
       playoffRound: 1,
       playoffSlot: slot,
@@ -133,7 +134,7 @@ export function advancePlayoffs(
   actorId: string,
   now: number = Date.now(),
 ): { matches: Match[]; audit: AuditEntry[]; championTeamId?: string } {
-  const po = playoffMatches(league.id, matches)
+  const po = playoffMatches(league.id, matches, league.currentSeason)
   if (po.length === 0) return { matches: [], audit: [] }
   const size = firstRoundSize(po)
   const totalRounds = Math.log2(size)
@@ -159,6 +160,7 @@ export function advancePlayoffs(
         scheduledAt: new Date(nextSaturday(now)).toISOString(),
         venue: league.homeVenue,
         status: 'scheduled',
+        season: league.currentSeason,
         stage: 'playoff',
         playoffRound: round + 1,
         playoffSlot: slot,
@@ -178,8 +180,8 @@ export function advancePlayoffs(
 }
 
 /** Structure the bracket (including undecided future slots) for rendering. */
-export function bracket(leagueId: string, matches: Match[]): Bracket | null {
-  const po = playoffMatches(leagueId, matches)
+export function bracket(leagueId: string, matches: Match[], season = 1): Bracket | null {
+  const po = playoffMatches(leagueId, matches, season)
   if (po.length === 0) return null
   const size = firstRoundSize(po)
   const totalRounds = Math.log2(size)
@@ -204,7 +206,7 @@ export function bracket(leagueId: string, matches: Match[]): Bracket | null {
 /** Human label for a playoff match, e.g. "Semifinal 2" or "Final". */
 export function playoffLabel(leagueId: string, matches: Match[], match: Match): string {
   if (match.stage !== 'playoff' || !match.playoffRound) return `Round ${match.round}`
-  const po = playoffMatches(leagueId, matches)
+  const po = playoffMatches(leagueId, matches, match.season ?? 1)
   const totalRounds = Math.log2(Math.max(2, firstRoundSize(po)))
   const names = ROUND_NAMES[totalRounds] ?? []
   const name = names[match.playoffRound - 1] ?? `Playoff round ${match.playoffRound}`

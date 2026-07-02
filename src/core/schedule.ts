@@ -51,6 +51,7 @@ function makeMatch(league: League, round: number, homeTeamId: string, awayTeamId
     scheduledAt: date.toISOString(),
     venue: venue ?? league.homeVenue,
     status: 'scheduled',
+    season: league.currentSeason,
     evidence: [],
     checkIns: [],
   }

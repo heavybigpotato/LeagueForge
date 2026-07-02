@@ -13,7 +13,9 @@ export function OnboardingScreen() {
   const store = useStore()
   const { state } = store
   const [mode, setMode] = useState<'welcome' | 'signup'>('welcome')
-  const [form, setForm] = useState({ username: '', email: '', phone: '' })
+  const [form, setForm] = useState({ username: '', email: '', phone: '', password: '' })
+  const [loginFor, setLoginFor] = useState<string | null>(null)
+  const [loginPassword, setLoginPassword] = useState('')
   const [emailCode, setEmailCode] = useState('')
   const [phoneCode, setPhoneCode] = useState('')
 
@@ -86,9 +88,13 @@ export function OnboardingScreen() {
           <span>Phone</span>
           <input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+1 555 000 0000" />
         </label>
+        <label className="field">
+          <span>Password (8+ characters)</span>
+          <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+        </label>
         <button
           className="btn primary"
-          disabled={!form.username.trim() || !form.email.trim() || !form.phone.trim()}
+          disabled={!form.username.trim() || !form.email.trim() || !form.phone.trim() || form.password.length < 8}
           onClick={() => store.signUp(form)}
         >
           Continue
@@ -106,22 +112,42 @@ export function OnboardingScreen() {
   return (
     <Shell>
       <Welcome />
-      <h2>Accounts on this device</h2>
+      <h2>Sign in</h2>
       <div className="card">
         {primaryAccounts.map((u) => (
-          <button
-            key={u.id}
-            className="person"
-            style={{ width: '100%', background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
-            onClick={() => store.switchUser(u.id)}
-          >
-            <Avatar user={u} />
-            <span className="grow">
-              <strong>@{u.username}</strong>
-              <span className="faint" style={{ display: 'block' }}>{u.email}</span>
-            </span>
-            <Icon name="chevronRight" size={16} />
-          </button>
+          <div key={u.id}>
+            <button
+              className="person"
+              style={{ width: '100%', background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+              onClick={() => {
+                setLoginFor(loginFor === u.id ? null : u.id)
+                setLoginPassword('')
+              }}
+            >
+              <Avatar user={u} />
+              <span className="grow">
+                <strong>@{u.username}</strong>
+                <span className="faint" style={{ display: 'block' }}>{u.email}</span>
+              </span>
+              <Icon name={loginFor === u.id ? 'x' : 'chevronRight'} size={16} />
+            </button>
+            {loginFor === u.id && (
+              <div className="row" style={{ padding: '2px 0 12px', gap: 8 }}>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  autoComplete="current-password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && store.signIn(u.id, loginPassword)}
+                  autoFocus
+                />
+                <button className="btn primary small" onClick={() => store.signIn(u.id, loginPassword)}>
+                  Sign in
+                </button>
+              </div>
+            )}
+          </div>
         ))}
       </div>
       <button className="btn primary" onClick={() => setMode('signup')}>

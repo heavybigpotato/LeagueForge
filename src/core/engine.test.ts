@@ -10,9 +10,12 @@ import { computeStandings, formGuide } from './standings'
 import { newInviteCode, inviteLink } from './ids'
 import { auditEntry } from './audit'
 import { evaluateSeasonAchievements } from './achievements'
-import { advancePlayoffs, bracket, bracketSize, startPlayoffs, winnerOf } from './playoffs'
+import { advancePlayoffs, bracket, bracketSize, playoffsStarted, startPlayoffs, winnerOf } from './playoffs'
 import { computeTeamStats } from './teamStats'
-import { createAccount, newVerificationCode, verifyEmail, verifyPhone } from './account'
+import { postAnnouncement, setReferee, updateLeague } from './league'
+import { rescheduleMatch } from './match'
+import { currentSeasonMatches, endSeason } from './seasons'
+import { checkPassword, createAccount, newVerificationCode, verifyEmail, verifyPhone } from './account'
 
 let userSeq = 0
 function makeUser(overrides: Partial<User> = {}): User {
@@ -22,6 +25,8 @@ function makeUser(overrides: Partial<User> = {}): User {
     username: `player${userSeq}`,
     email: `p${userSeq}@example.com`,
     phone: `+1555000${userSeq.toString().padStart(4, '0')}`,
+    passwordHash: 'test',
+    passwordSalt: 'test',
     emailVerified: true,
     phoneVerified: true,
     idVerified: false,
@@ -81,7 +86,7 @@ describe('invite codes', () => {
 
 describe('accounts and verification', () => {
   it('creates unverified accounts with 6-digit codes for email and phone', () => {
-    const { user, verification } = createAccount({ username: 'alex_r', email: 'alex@example.com', phone: '+15550001111' }, [])
+    const { user, verification } = createAccount({ username: 'alex_r', email: 'alex@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
     expect(user.emailVerified).toBe(false)
     expect(user.phoneVerified).toBe(false)
     expect(verification.emailCode).toMatch(/^\d{6}$/)
@@ -90,16 +95,29 @@ describe('accounts and verification', () => {
   })
 
   it('rejects invalid or duplicate identities', () => {
-    const { user } = createAccount({ username: 'taken', email: 'taken@example.com', phone: '+15550001111' }, [])
-    expect(() => createAccount({ username: 'x', email: 'a@b.co', phone: '+15550001112' }, [user])).toThrow(/Username/)
-    expect(() => createAccount({ username: 'TAKEN', email: 'a@b.co', phone: '+15550001112' }, [user])).toThrow(/taken/)
-    expect(() => createAccount({ username: 'newuser', email: 'not-an-email', phone: '+15550001112' }, [user])).toThrow(/email/)
-    expect(() => createAccount({ username: 'newuser', email: 'taken@example.com', phone: '+15550001112' }, [user])).toThrow(/already exists/)
-    expect(() => createAccount({ username: 'newuser', email: 'a@b.co', phone: '12' }, [user])).toThrow(/phone/)
+    const { user } = createAccount({ username: 'taken', email: 'taken@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
+    expect(() => createAccount({ username: 'x', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/Username/)
+    expect(() => createAccount({ username: 'TAKEN', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/taken/)
+    expect(() => createAccount({ username: 'newuser', email: 'not-an-email', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/email/)
+    expect(() => createAccount({ username: 'newuser', email: 'taken@example.com', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/already exists/)
+    expect(() => createAccount({ username: 'newuser', email: 'a@b.co', phone: '12', password: 'stadium-lights-9' }, [user])).toThrow(/phone/)
+  })
+
+  it('passwords: minimum length enforced, salted hash verifies, wrong password rejected', () => {
+    expect(() =>
+      createAccount({ username: 'shortpw', email: 's@example.com', phone: '+15550003333', password: 'short' }, []),
+    ).toThrow(/at least 8/)
+    const { user } = createAccount({ username: 'lockedin', email: 'l@example.com', phone: '+15550003334', password: 'stadium-lights-9' }, [])
+    expect(user.passwordHash).not.toContain('stadium')
+    expect(checkPassword(user, 'stadium-lights-9')).toBe(true)
+    expect(checkPassword(user, 'stadium-lights-8')).toBe(false)
+    // same password, different account → different hash (unique salts)
+    const { user: other } = createAccount({ username: 'lockedin2', email: 'l2@example.com', phone: '+15550003335', password: 'stadium-lights-9' }, [user])
+    expect(other.passwordHash).not.toBe(user.passwordHash)
   })
 
   it('verification requires the exact codes, in either order', () => {
-    const { user, verification } = createAccount({ username: 'casey_v', email: 'c@example.com', phone: '+15550002222' }, [])
+    const { user, verification } = createAccount({ username: 'casey_v', email: 'c@example.com', phone: '+15550002222', password: 'stadium-lights-9' }, [])
     expect(() => verifyEmail(user, verification, '000000')).toThrow(/not correct/)
     const emailDone = verifyEmail(user, verification, verification.emailCode)
     expect(emailDone.emailVerified).toBe(true)
@@ -404,10 +422,7 @@ describe('playoffs', () => {
     expect(() => submitScore(league, semis[0], teams[0], captain, 1, 1)).toThrow(/cannot end in a draw/)
 
     function state(team: Team): User {
-      return {
-        id: team.captainId, username: 'cap', email: '', phone: '', emailVerified: true, phoneVerified: true,
-        idVerified: false, deviceFingerprint: '', reputation: 0, createdAt: 0,
-      }
+      return makeUser({ id: team.captainId, username: 'cap' })
     }
   })
 
@@ -489,6 +504,145 @@ describe('team-level statistics', () => {
     const lastOutcome = outcomes[outcomes.length - 1]
     expect(stats.currentStreak?.type).toBe(lastOutcome)
     expect(stats.longestWinStreak).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('seasons', () => {
+  function officialize(m: Match, h: number, a: number): Match {
+    return { ...m, status: 'official', result: { homeScore: h, awayScore: a, verifiedAt: 1, verifiedBy: 'captains' } }
+  }
+
+  it('archives the table and champion, unlocks rosters, and isolates the next season', () => {
+    const commissioner = makeUser()
+    let league = makeLeague(commissioner)
+    let teams: Team[] = []
+    for (const name of ['One', 'Two', 'Three', 'Four']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const rank = (id: string) => teams.findIndex((t) => t.id === id)
+    const season1 = generateRoundRobin(league, teams).map((m) => {
+      const homeBetter = rank(m.homeTeamId) < rank(m.awayTeamId)
+      return officialize(m, homeBetter ? 2 : 0, homeBetter ? 0 : 2)
+    })
+
+    // playoffs decided: seed 3 wins its semi away, then upsets seed 1 in the final
+    const { matches: semis } = startPlayoffs(league, teams, season1, commissioner.id)
+    let all = [...season1, ...semis.map((m) => officialize(m, m.playoffSlot === 0 ? 2 : 0, m.playoffSlot === 0 ? 0 : 2))]
+    const adv = advancePlayoffs(league, all, commissioner.id)
+    all = [...all, officialize(adv.matches[0], 0, 1)]
+    const champId = advancePlayoffs(league, all, commissioner.id).championTeamId!
+    expect(champId).toBe(teams[2].id)
+
+    // random members cannot end the season
+    expect(() => endSeason(league, teams, all, teams[0].id)).toThrow(/commissioner/)
+
+    const ended = endSeason(league, teams, all, commissioner.id)
+    league = ended.league
+    teams = ended.teams
+    expect(league.currentSeason).toBe(2)
+    expect(league.seasons).toHaveLength(1)
+    expect(league.seasons[0].championTeamId).toBe(champId)
+    expect(league.seasons[0].tableLeaderTeamId).toBe(teams[0].id)
+    expect(league.seasons[0].table[0].points).toBe(9)
+    expect(teams.every((t) => !t.rosterLocked)).toBe(true)
+    expect(ended.audit[0].action).toBe('season.ended')
+
+    // season 2 starts clean: standings empty, playoffs can run again
+    expect(computeStandings(league, teams, all).every((r) => r.played === 0)).toBe(true)
+    expect(playoffsStarted(league.id, all, league.currentSeason)).toBe(false)
+    const season2 = generateRoundRobin(league, teams)
+    expect(season2.every((m) => m.season === 2)).toBe(true)
+    const withNew = [...all, officialize(season2[0], 1, 0)]
+    const table2 = computeStandings(league, teams, withNew)
+    expect(table2.reduce((s, r) => s + r.played, 0)).toBe(2) // only the season-2 result
+    expect(currentSeasonMatches(league, withNew)).toHaveLength(season2.length ? 1 : 0)
+
+    // history still reads season 1's bracket
+    expect(bracket(league.id, all, 1)?.championTeamId).toBe(champId)
+  })
+
+  it('refuses to archive an empty season', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const teams: Team[] = []
+    for (const name of ['A', 'B']) teams.push(buildOfficialTeam(league, name, teams).team)
+    expect(() => endSeason(league, teams, [], commissioner.id)).toThrow(/Nothing to archive/)
+  })
+})
+
+describe('knockout cup format', () => {
+  it('the whole season can be a bracket: seeded, no draws, champion crowned', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
+    const teams: Team[] = []
+    for (const name of ['C1', 'C2', 'C3', 'C4']) teams.push(buildOfficialTeam(league, name, teams).team)
+
+    // drawing the cup = starting the bracket with no regular season
+    const { matches: round1 } = startPlayoffs(league, teams, [], commissioner.id)
+    expect(round1).toHaveLength(2)
+    expect(round1.every((m) => m.stage === 'playoff' && m.season === 1)).toBe(true)
+
+    const decided = round1.map((m) => ({ ...m, status: 'official' as const, result: { homeScore: 1, awayScore: 0, verifiedAt: 1, verifiedBy: 'captains' as const } }))
+    const adv = advancePlayoffs(league, decided, commissioner.id)
+    expect(adv.matches).toHaveLength(1)
+    const final = { ...adv.matches[0], status: 'official' as const, result: { homeScore: 2, awayScore: 1, verifiedAt: 1, verifiedBy: 'captains' as const } }
+    expect(advancePlayoffs(league, [...decided, final], commissioner.id).championTeamId).toBe(final.homeTeamId)
+    // and the standings stay untouched — a cup has no table
+    expect(computeStandings(league, teams, [...decided, final]).every((r) => r.played === 0)).toBe(true)
+  })
+})
+
+describe('league administration', () => {
+  it('settings edits are commissioner-only and keep structural rules safe', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    expect(() => updateLeague(league, makeUser().id, { description: 'x' })).toThrow(/commissioner/)
+    expect(() => updateLeague(league, commissioner.id, { minPlayersPerTeam: 5, maxPlayersPerTeam: 25 }).league.minPlayersPerTeam).not.toThrow
+    expect(updateLeague(league, commissioner.id, { minPlayersPerTeam: 5 }).league.minPlayersPerTeam).toBe(PLATFORM_MIN_PLAYERS)
+    expect(() => updateLeague(league, commissioner.id, { maxPlayersPerTeam: 3 })).toThrow(/Maximum players/)
+    expect(() => updateLeague(league, commissioner.id, { scoring: { pointsForWin: 1, pointsForDraw: 1, pointsForLoss: 0 } })).toThrow(/worth more/)
+    const updated = updateLeague(league, commissioner.id, {
+      description: 'New rules',
+      homeVenue: 'North Field',
+      scoring: { pointsForWin: 2, pointsForDraw: 1, pointsForLoss: 0 },
+      allowTransfers: true,
+    })
+    expect(updated.league.homeVenue).toBe('North Field')
+    expect(updated.league.scoring.pointsForWin).toBe(2)
+    expect(updated.audit[0].action).toBe('league.updated')
+  })
+
+  it('announcements and referees are commissioner-only and audit-logged', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const rando = makeUser()
+    expect(() => postAnnouncement(league, rando, 'hi')).toThrow(/commissioner/)
+    expect(() => postAnnouncement(league, commissioner, '   ')).toThrow(/empty/)
+    const posted = postAnnouncement(league, commissioner, 'Season kicks off Saturday!')
+    expect(posted.league.announcements).toHaveLength(1)
+    expect(posted.audit[0].action).toBe('league.announcement')
+
+    const unverifiedRef = makeUser({ phoneVerified: false })
+    expect(() => setReferee(league, commissioner.id, unverifiedRef, true)).toThrow(/verified/)
+    const ref = makeUser()
+    const assigned = setReferee(league, commissioner.id, ref, true)
+    expect(assigned.league.refereeIds).toContain(ref.id)
+    // assigning twice never duplicates
+    expect(setReferee(assigned.league, commissioner.id, ref, true).league.refereeIds).toHaveLength(1)
+    expect(setReferee(assigned.league, commissioner.id, ref, false).league.refereeIds).toHaveLength(0)
+  })
+
+  it('reschedules only unplayed fixtures, commissioner-only', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const teams: Team[] = []
+    for (const name of ['R1', 'R2']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [m] = generateRoundRobin(league, teams)
+    expect(() => rescheduleMatch(league, m, teams[0].id, { venue: 'Elsewhere' })).toThrow(/commissioner/)
+    expect(() => rescheduleMatch(league, m, commissioner.id, { scheduledAt: 'garbage' })).toThrow(/valid date/)
+    const moved = rescheduleMatch(league, m, commissioner.id, { scheduledAt: '2026-09-01T18:00:00.000Z', venue: 'North Field' })
+    expect(moved.match.venue).toBe('North Field')
+    expect(moved.audit[0].action).toBe('match.rescheduled')
+    const played: Match = { ...m, status: 'official', result: { homeScore: 1, awayScore: 0, verifiedAt: 1, verifiedBy: 'captains' } }
+    expect(() => rescheduleMatch(league, played, commissioner.id, { venue: 'X' })).toThrow(/unplayed/)
   })
 })
 

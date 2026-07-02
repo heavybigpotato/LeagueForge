@@ -7,15 +7,17 @@ import { powerRankings } from '../core/powerRankings'
 import { shareStandingsCard } from './shareCards'
 import type { Match, Team } from '../core/types'
 import { Badge, EmptyState, FormPills, RosterProgress, TeamLogo, formatDate, formatWhen } from './components'
+import type { League, SeasonRecord } from '../core/types'
 import { Icon, LeagueBadge } from './icons'
 import { PlayoffsTab } from './BracketView'
 
-type Tab = 'standings' | 'schedule' | 'playoffs' | 'teams' | 'log'
+type Tab = 'standings' | 'schedule' | 'playoffs' | 'teams' | 'history' | 'log'
 const TAB_LABELS: Record<Tab, string> = {
   standings: 'Standings',
   schedule: 'Schedule',
   playoffs: 'Playoffs',
   teams: 'Teams',
+  history: 'History',
   log: 'Audit Log',
 }
 
@@ -29,12 +31,13 @@ export function LeagueScreen() {
 
   const teams = state.teams.filter((t) => t.leagueId === league.id)
   const official = teams.filter((t) => t.status === 'official')
-  const matches = state.matches.filter((m) => m.leagueId === league.id)
+  const matches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
   const verified = matches.filter((m) => m.status === 'official')
   const isCommissioner = currentUser.id === league.commissionerId
   const myTeam = teams.find((t) => t.memberIds.includes(currentUser.id))
   const goals = verified.reduce((sum, m) => sum + (m.result ? m.result.homeScore + m.result.awayScore : 0), 0)
-  const champion = teams.find((t) => t.id === bracket(league.id, state.matches)?.championTeamId)
+  const champion = teams.find((t) => t.id === bracket(league.id, state.matches, league.currentSeason)?.championTeamId)
+  const isKnockout = league.scheduleFormat === 'knockout'
 
   return (
     <div>
@@ -47,11 +50,21 @@ export function LeagueScreen() {
         />
         <div className="hero-head">
           <LeagueBadge name={league.name} size={54} />
-          <div className="grow">
+          <div className="grow" style={{ position: 'relative' }}>
+            {isCommissioner && (
+              <Link
+                to={`/league/${league.id}/settings`}
+                aria-label="League settings"
+                style={{ position: 'absolute', right: 0, top: 0, color: 'var(--muted)' }}
+              >
+                <Icon name="gauge" size={20} />
+              </Link>
+            )}
             <div className="kicker" style={{ textTransform: 'uppercase' }}>{league.sport} · {league.city}</div>
             <h1>{league.name}</h1>
             <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-              <Badge kind="neutral">{league.privacy}</Badge>
+              <Badge kind="volt">Season {league.currentSeason}</Badge>
+              <Badge kind="neutral">{isKnockout ? 'knockout cup' : league.privacy}</Badge>
               {isCommissioner && <Badge kind="volt">Commissioner</Badge>}
               {myTeam && !isCommissioner && <Badge kind="awaiting">{myTeam.name}</Badge>}
               {champion && <Badge kind="pending">🏆 {champion.name}</Badge>}
@@ -66,15 +79,26 @@ export function LeagueScreen() {
         </div>
       </div>
 
+      <Announcements league={league} isCommissioner={isCommissioner} />
+
       <div className="tabs">
         {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {TAB_LABELS[t]}
+            {t === 'playoffs' && isKnockout ? 'Bracket' : TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
-      {tab === 'standings' && <Standings leagueId={league.id} />}
+      {tab === 'standings' &&
+        (isKnockout ? (
+          <EmptyState icon="trophy">
+            This league is a knockout cup — there is no table. Head to the Bracket tab to follow the ties.
+          </EmptyState>
+        ) : (
+          <Standings leagueId={league.id} />
+        ))}
+
+      {tab === 'history' && <SeasonHistory league={league} />}
 
       {tab === 'playoffs' && <PlayoffsTab league={league} />}
 
@@ -93,7 +117,12 @@ export function LeagueScreen() {
           )}
           {isCommissioner && (
             <button className="btn" onClick={() => generateSchedule(league.id)}>
-              <Icon name="calendar" size={16} /> {matches.length ? 'Regenerate remaining fixtures' : 'Generate schedule'}
+              <Icon name="calendar" size={16} />{' '}
+              {isKnockout
+                ? 'Draw the cup bracket'
+                : matches.length
+                  ? 'Regenerate remaining fixtures'
+                  : `Generate Season ${league.currentSeason} schedule`}
             </button>
           )}
         </div>
@@ -310,6 +339,128 @@ function AuditLog({ leagueId }: { leagueId: string }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+
+/** Commissioner bulletin board — latest news pinned under the hero. */
+function Announcements({ league, isCommissioner }: { league: League; isCommissioner: boolean }) {
+  const { state, postAnnouncement } = useStore()
+  const [draft, setDraft] = useState('')
+  const [showAll, setShowAll] = useState(false)
+  const latest = league.announcements.slice().reverse()
+  if (latest.length === 0 && !isCommissioner) return null
+  const visible = showAll ? latest : latest.slice(0, 1)
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <span style={{ color: 'var(--gold)' }}><Icon name="send" size={16} /></span>
+        <strong className="grow">League news</strong>
+        {latest.length > 1 && (
+          <button className="btn small ghost" onClick={() => setShowAll((s) => !s)}>
+            {showAll ? 'Latest only' : `All ${latest.length}`}
+          </button>
+        )}
+      </div>
+      {visible.map((a) => {
+        const author = state.users.find((u) => u.id === a.authorId)
+        return (
+          <div key={a.id} style={{ marginTop: 10 }}>
+            <div className="muted" style={{ fontSize: 14 }}>{a.text}</div>
+            <div className="faint" style={{ marginTop: 3 }}>@{author?.username} · {formatWhen(a.at)}</div>
+          </div>
+        )
+      })}
+      {latest.length === 0 && <p className="faint" style={{ margin: '8px 0 0' }}>Nothing posted yet — say something to your league.</p>}
+      {isCommissioner && (
+        <div className="row" style={{ marginTop: 12, gap: 8 }}>
+          <input
+            value={draft}
+            placeholder="Post an announcement…"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && draft.trim()) {
+                postAnnouncement(league.id, draft)
+                setDraft('')
+              }
+            }}
+          />
+          <button
+            className="btn primary small"
+            disabled={!draft.trim()}
+            onClick={() => {
+              postAnnouncement(league.id, draft)
+              setDraft('')
+            }}
+          >
+            Post
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Archived seasons: champions, table leaders, and final tables. */
+function SeasonHistory({ league }: { league: League }) {
+  const { state } = useStore()
+  const teams = state.teams.filter((t) => t.leagueId === league.id)
+  const teamOf = (id?: string) => teams.find((t) => t.id === id)
+  const records = league.seasons.slice().reverse()
+  if (records.length === 0) {
+    return (
+      <EmptyState icon="scroll">
+        No archived seasons yet. When the commissioner ends Season {league.currentSeason}, its final table and champions
+        are frozen here forever.
+      </EmptyState>
+    )
+  }
+  return (
+    <div>
+      {records.map((rec) => (
+        <SeasonCard key={rec.season} record={rec} teamOf={teamOf} />
+      ))}
+    </div>
+  )
+}
+
+function SeasonCard({ record, teamOf }: { record: SeasonRecord; teamOf: (id?: string) => Team | undefined }) {
+  const champ = teamOf(record.championTeamId)
+  const leader = teamOf(record.tableLeaderTeamId)
+  return (
+    <div className="card">
+      <div className="row" style={{ gap: 8 }}>
+        <span className="honoricon"><Icon name="scroll" size={17} /></span>
+        <div className="grow">
+          <strong>Season {record.season}</strong>
+          <div className="faint">archived {new Date(record.endedAt).toLocaleDateString()}</div>
+        </div>
+        {champ && <TeamLogo team={champ} size={30} />}
+      </div>
+      {(champ || leader) && (
+        <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          {champ && <Badge kind="pending">🏆 Champions: {champ.name}</Badge>}
+          {leader && leader.id !== champ?.id && <Badge kind="volt">Table leaders: {leader.name}</Badge>}
+        </div>
+      )}
+      {record.table.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {record.table.slice(0, 5).map((r, i) => {
+            const team = teamOf(r.teamId)
+            if (!team) return null
+            return (
+              <div className="pr-row" key={r.teamId}>
+                <span className="pr-rank">{i + 1}</span>
+                <TeamLogo team={team} size={22} />
+                <span className="grow truncate" style={{ fontWeight: 700, fontSize: 13 }}>{team.name}</span>
+                <span className="faint num">{r.played}P {r.goalDifference >= 0 ? '+' : ''}{r.goalDifference}GD</span>
+                <span className="pr-rating num">{r.points}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -27,6 +27,8 @@ export function CreateLeagueScreen() {
     playoffFormat: 'single-elimination' as PlayoffFormat,
     privacy: 'public' as LeaguePrivacy,
     allowTransfers: false,
+    pointsForWin: 3,
+    pointsForDraw: 1,
   })
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -34,7 +36,7 @@ export function CreateLeagueScreen() {
     const league = store.createLeague({
       ...form,
       banner: 'linear-gradient(135deg,#134e5e,#71b280)',
-      scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+      scoring: { pointsForWin: form.pointsForWin, pointsForDraw: form.pointsForDraw, pointsForLoss: 0 },
       tieBreakers: ['goal-difference', 'goals-for', 'head-to-head'],
     })
     if (league) navigate(`/league/${league.id}`)
@@ -107,6 +109,7 @@ export function CreateLeagueScreen() {
           <select value={form.scheduleFormat} onChange={(e) => set('scheduleFormat', e.target.value as typeof form.scheduleFormat)}>
             <option value="round-robin">Round robin</option>
             <option value="double-round-robin">Double round robin</option>
+            <option value="knockout">Knockout cup</option>
           </select>
         </label>
         <label className="field">
@@ -117,7 +120,21 @@ export function CreateLeagueScreen() {
             <option value="invite-only">Invite only</option>
           </select>
         </label>
+        <label className="field">
+          <span>Points: win</span>
+          <input type="number" min={1} value={form.pointsForWin} onChange={(e) => set('pointsForWin', Number(e.target.value))} />
+        </label>
+        <label className="field">
+          <span>Points: draw</span>
+          <input type="number" min={0} value={form.pointsForDraw} onChange={(e) => set('pointsForDraw', Number(e.target.value))} />
+        </label>
       </div>
+      {form.scheduleFormat === 'knockout' && (
+        <p className="faint" style={{ display: 'flex', gap: 8 }}>
+          <Icon name="trophy" size={14} />
+          <span>Knockout cup: the whole season is a single-elimination bracket — no table, straight to the drama.</span>
+        </p>
+      )}
       <p className="faint" style={{ display: 'flex', gap: 8 }}>
         <Icon name="shield" size={14} />
         <span>
