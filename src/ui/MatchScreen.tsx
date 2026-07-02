@@ -5,6 +5,8 @@ import type { EvidenceKind } from '../core/types'
 import { EmptyState, TeamLogo, formatDate, formatTime, formatWhen } from './components'
 import { MatchBadge } from './LeagueScreen'
 import { Icon } from './icons'
+import { playoffLabel } from '../core/playoffs'
+import type { Match, Team } from '../core/types'
 
 const EVIDENCE_KINDS: { kind: EvidenceKind; label: string; icon: string }[] = [
   { kind: 'photo', label: 'Photo', icon: 'camera' },
@@ -45,7 +47,11 @@ export function MatchScreen() {
 
       <div className="card flush fixture" style={{ marginTop: 12 }}>
         <div className="fixture-top">
-          <span>Round {match.round}</span>
+          {match.stage === 'playoff' ? (
+            <span style={{ color: 'var(--gold)', fontWeight: 800 }}>🏆 {playoffLabel(league.id, state.matches, match)}</span>
+          ) : (
+            <span>Round {match.round}</span>
+          )}
           <span>·</span>
           <span>{formatDate(match.scheduledAt)}, {formatTime(match.scheduledAt)}</span>
           <span>·</span>
@@ -157,6 +163,8 @@ export function MatchScreen() {
         </div>
       )}
 
+      <HeadToHead current={match} home={home} away={away} />
+
       <h2>Evidence ({match.evidence.length})</h2>
       {match.evidence.length === 0 && <p className="faint">No evidence uploaded yet.</p>}
       {match.evidence.map((ev) => {
@@ -176,7 +184,13 @@ export function MatchScreen() {
           </div>
         )
       })}
-      {(myTeam || isCommissioner || isReferee) && match.status !== 'official' && (
+      {(myTeam || isCommissioner || isReferee) && match.status !== 'official' && evidenceForm()}
+    </div>
+  )
+
+  function evidenceForm() {
+    if (!match) return null
+    return (
         <div className="card">
           <strong>Add evidence</strong>
           <div className="fieldgrid" style={{ marginTop: 10 }}>
@@ -197,7 +211,59 @@ export function MatchScreen() {
             <Icon name="plus" size={15} /> Upload
           </button>
         </div>
-      )}
-    </div>
+    )
+  }
+}
+
+/** Team-level history between the two clubs — verified meetings only. */
+function HeadToHead({ current, home, away }: { current: Match; home: Team; away: Team }) {
+  const { state } = useStore()
+  const meetings = state.matches
+    .filter(
+      (m) =>
+        m.id !== current.id &&
+        m.leagueId === current.leagueId &&
+        m.status === 'official' &&
+        m.result &&
+        ((m.homeTeamId === home.id && m.awayTeamId === away.id) || (m.homeTeamId === away.id && m.awayTeamId === home.id)),
+    )
+    .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt))
+  if (meetings.length === 0) return null
+
+  let homeWins = 0
+  let draws = 0
+  let awayWins = 0
+  for (const m of meetings) {
+    const hGoals = m.homeTeamId === home.id ? m.result!.homeScore : m.result!.awayScore
+    const aGoals = m.homeTeamId === home.id ? m.result!.awayScore : m.result!.homeScore
+    if (hGoals > aGoals) homeWins++
+    else if (hGoals === aGoals) draws++
+    else awayWins++
+  }
+
+  return (
+    <>
+      <h2>Head to head</h2>
+      <div className="card">
+        <div className="statgrid">
+          <div className="cell"><div className="v">{homeWins}</div><div className="k">{home.name}</div></div>
+          <div className="cell"><div className="v">{draws}</div><div className="k">Draws</div></div>
+          <div className="cell"><div className="v">{awayWins}</div><div className="k">{away.name}</div></div>
+        </div>
+        {meetings.slice(0, 3).map((m) => {
+          const h = m.homeTeamId === home.id ? home : away
+          const a = m.awayTeamId === away.id ? away : home
+          return (
+            <Link key={m.id} to={`/match/${m.id}`} className="listlink" style={{ fontSize: 13 }}>
+              <span className="faint" style={{ minWidth: 64 }}>{formatDate(m.scheduledAt)}</span>
+              <span className="grow truncate" style={{ fontWeight: 700 }}>
+                {h.name} {m.result!.homeScore}–{m.result!.awayScore} {a.name}
+              </span>
+              <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={14} /></span>
+            </Link>
+          )
+        })}
+      </div>
+    </>
   )
 }

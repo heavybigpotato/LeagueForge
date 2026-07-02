@@ -95,6 +95,7 @@ export function seedDemoData(): AppState {
   const thunder = buildTeam('Thunder FC', '⚡', '#f2c14e', '#1b2333', 'Founded 2021. Fast wings, faster counterattacks.', 11)
   const river = buildTeam('River Hawks', '🦅', '#2563eb', '#e0e7ff', 'East-side club with a legendary back line.', 11)
   const iron = buildTeam('Iron Wolves', '🐺', '#7c8594', '#e2e6ec', 'Defense wins championships.', 11)
+  const harbor = buildTeam('Harbor Kings', '⚓', '#38bdf8', '#0c223a', 'Dockside legends since day one.', 11)
   // Still pending at 9/11, with one join request waiting for the captain.
   const nomads = buildTeam('Northside Nomads', '🧭', '#059669', '#d1fae5', 'New crew, hungry for a first season.', 9)
   const applicant = makeUser(40)
@@ -120,7 +121,7 @@ export function seedDemoData(): AppState {
     }),
   ]
 
-  const teamOf = (id: string) => [thunder, river, iron].find((x) => x.team.id === id)!
+  const teamOf = (id: string) => [thunder, river, iron, harbor].find((x) => x.team.id === id)!
   const setMatch = (m: Match) => {
     matches[matches.findIndex((x) => x.id === m.id)] = m
   }

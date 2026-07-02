@@ -2,11 +2,20 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { computeStandings, formGuide } from '../core/standings'
+import { bracket, bracketSize, playoffLabel, playoffsStarted } from '../core/playoffs'
 import type { Match, Team } from '../core/types'
 import { Badge, EmptyState, FormPills, RosterProgress, TeamLogo, formatDate, formatWhen } from './components'
 import { Icon, LeagueBadge } from './icons'
+import { PlayoffsTab } from './BracketView'
 
-type Tab = 'standings' | 'schedule' | 'teams' | 'log'
+type Tab = 'standings' | 'schedule' | 'playoffs' | 'teams' | 'log'
+const TAB_LABELS: Record<Tab, string> = {
+  standings: 'Standings',
+  schedule: 'Schedule',
+  playoffs: 'Playoffs',
+  teams: 'Teams',
+  log: 'Audit Log',
+}
 
 export function LeagueScreen() {
   const { leagueId } = useParams()
@@ -23,6 +32,7 @@ export function LeagueScreen() {
   const isCommissioner = currentUser.id === league.commissionerId
   const myTeam = teams.find((t) => t.memberIds.includes(currentUser.id))
   const goals = verified.reduce((sum, m) => sum + (m.result ? m.result.homeScore + m.result.awayScore : 0), 0)
+  const champion = teams.find((t) => t.id === bracket(league.id, state.matches)?.championTeamId)
 
   return (
     <div>
@@ -38,10 +48,11 @@ export function LeagueScreen() {
           <div className="grow">
             <div className="kicker" style={{ textTransform: 'uppercase' }}>{league.sport} · {league.city}</div>
             <h1>{league.name}</h1>
-            <div className="row" style={{ gap: 6, marginTop: 6 }}>
+            <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <Badge kind="neutral">{league.privacy}</Badge>
               {isCommissioner && <Badge kind="volt">Commissioner</Badge>}
               {myTeam && !isCommissioner && <Badge kind="awaiting">{myTeam.name}</Badge>}
+              {champion && <Badge kind="pending">🏆 {champion.name}</Badge>}
             </div>
           </div>
         </div>
@@ -54,14 +65,16 @@ export function LeagueScreen() {
       </div>
 
       <div className="tabs">
-        {(['standings', 'schedule', 'teams', 'log'] as Tab[]).map((t) => (
+        {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'log' ? 'Audit Log' : t[0].toUpperCase() + t.slice(1)}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {tab === 'standings' && <Standings leagueId={league.id} />}
+
+      {tab === 'playoffs' && <PlayoffsTab league={league} />}
 
       {tab === 'schedule' && (
         <div>
@@ -127,6 +140,8 @@ function Standings({ leagueId }: { leagueId: string }) {
   const teams = state.teams.filter((t) => t.leagueId === leagueId)
   const rows = computeStandings(league, teams, state.matches)
   const frozen = state.matches.some((m) => m.leagueId === leagueId && m.status === 'disputed')
+  const started = playoffsStarted(leagueId, state.matches)
+  const qualSpots = league.playoffFormat !== 'none' ? bracketSize(rows.length) : 0
 
   if (rows.length === 0) {
     return <EmptyState icon="activity">Standings appear once teams become official. Pending teams are never listed.</EmptyState>
@@ -148,8 +163,9 @@ function Standings({ leagueId }: { leagueId: string }) {
           <tbody>
             {rows.map((r, i) => {
               const team = teams.find((t) => t.id === r.teamId)!
+              const cls = [i === 0 && r.played > 0 ? 'lead' : '', i < qualSpots ? 'qual' : ''].join(' ').trim()
               return (
-                <tr key={r.teamId} className={i === 0 && r.played > 0 ? 'lead' : ''}>
+                <tr key={r.teamId} className={cls}>
                   <td className="pos">{i + 1}</td>
                   <td>
                     <Link to={`/team/${team.id}`} className="teamcell">
@@ -169,20 +185,27 @@ function Standings({ leagueId }: { leagueId: string }) {
       </div>
       <div className="statusnote">
         Only verified results count · tie-breakers: goal difference, goals for, head-to-head
+        {qualSpots > 0 && ` · top ${qualSpots} ${started ? 'qualified for' : 'qualify for'} the playoffs`}
       </div>
     </div>
   )
 }
 
 function MatchCard({ match, teams }: { match: Match; teams: Team[] }) {
+  const { state } = useStore()
   const home = teams.find((t) => t.id === match.homeTeamId)
   const away = teams.find((t) => t.id === match.awayTeamId)
   if (!home || !away) return null
   const score = match.result ?? match.submission
+  const isPlayoff = match.stage === 'playoff'
   return (
     <Link to={`/match/${match.id}`} className="card clickable flush fixture">
       <div className="fixture-top">
-        <span>Round {match.round}</span>
+        {isPlayoff ? (
+          <span style={{ color: 'var(--gold)', fontWeight: 800 }}>🏆 {playoffLabel(match.leagueId, state.matches, match)}</span>
+        ) : (
+          <span>Round {match.round}</span>
+        )}
         <span>·</span>
         <span>{formatDate(match.scheduledAt)}</span>
         <span>·</span>

@@ -178,6 +178,11 @@ export interface Match {
   scheduledAt: string // ISO datetime
   venue: string
   status: MatchStatus
+  /** Absent/'regular' matches feed the standings; playoff matches feed the bracket. */
+  stage?: 'regular' | 'playoff'
+  /** Bracket coordinates, set only when stage === 'playoff'. */
+  playoffRound?: number
+  playoffSlot?: number
   submission?: ScoreSubmission
   /** Present only when status === 'official'. */
   result?: { homeScore: number; awayScore: number; verifiedAt: number; verifiedBy: 'captains' | 'referee' | 'commissioner' }
@@ -202,6 +207,9 @@ export type AuditAction =
   | 'match.evidence-added'
   | 'match.check-in'
   | 'match.resolved'
+  | 'playoffs.started'
+  | 'playoffs.advanced'
+  | 'playoffs.champion'
 
 export interface AuditEntry {
   readonly id: Id

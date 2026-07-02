@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import type { Team, User } from '../core/types'
 import type { FormResult } from '../core/standings'
 import { useStore } from '../store/store'
@@ -58,18 +58,33 @@ export function FormPills({ form }: { form: FormResult[] }) {
 }
 
 export function Toasts() {
-  const { state, dismiss } = useStore()
+  const { state } = useStore()
   if (state.notifications.length === 0) return null
   return (
     <div className="toasts">
       {state.notifications.slice(-3).map((n) => (
-        <div key={n.id} className={`toast ${n.kind}`} onClick={() => dismiss(n.id)}>
-          <span className="tico">
-            <Icon name={n.kind === 'error' ? 'alert' : n.kind === 'info' ? 'clock' : 'check'} size={16} />
-          </span>
-          {n.text}
-        </div>
+        <ToastItem key={n.id} id={n.id} kind={n.kind} text={n.text} />
       ))}
+    </div>
+  )
+}
+
+function ToastItem({ id, kind, text }: { id: number; kind: 'success' | 'info' | 'error'; text: string }) {
+  const { dismiss } = useStore()
+
+  // Each toast clears itself 4s after it appears; tapping dismisses immediately.
+  useEffect(() => {
+    const t = setTimeout(() => dismiss(id), 4000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  return (
+    <div className={`toast ${kind}`} onClick={() => dismiss(id)}>
+      <span className="tico">
+        <Icon name={kind === 'error' ? 'alert' : kind === 'info' ? 'clock' : 'check'} size={16} />
+      </span>
+      {text}
     </div>
   )
 }

@@ -4,6 +4,8 @@ import { createLeague, type CreateLeagueInput } from '../core/league'
 import { approvePlayer, createPendingTeam, officialTeams, requestJoin } from '../core/team'
 import { generateRoundRobin } from '../core/schedule'
 import { addEvidence, checkIn, confirmScore, disputeScore, resolveDispute, submitScore } from '../core/match'
+import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
+import { auditEntry } from '../core/audit'
 import type { EvidenceKind } from '../core/types'
 import { seedDemoData } from './seed'
 
@@ -28,7 +30,7 @@ type Action =
   | { type: 'notify'; text: string; kind: Notification['kind'] }
   | { type: 'dismiss'; id: number }
 
-const STORAGE_KEY = 'leagueforge-state-v2'
+const STORAGE_KEY = 'leagueforge-state-v3'
 let notifSeq = 1
 
 function loadInitialState(): AppState {
@@ -55,9 +57,10 @@ function reducer(state: AppState, action: Action): AppState {
       persist(action.state)
       return action.state
     case 'notify':
+      // keep only the latest few — every rendered toast dismisses itself
       return {
         ...state,
-        notifications: [...state.notifications, { id: notifSeq++, text: action.text, kind: action.kind }],
+        notifications: [...state.notifications, { id: notifSeq++, text: action.text, kind: action.kind }].slice(-3),
       }
     case 'dismiss':
       return { ...state, notifications: state.notifications.filter((n) => n.id !== action.id) }
@@ -75,6 +78,7 @@ export interface StoreApi {
   joinByCode(code: string): Team | undefined
   approvePlayer(teamId: string, playerId: string): void
   generateSchedule(leagueId: string): void
+  startPlayoffs(leagueId: string): void
   submitScore(matchId: string, homeScore: number, awayScore: number): void
   confirmScore(matchId: string): void
   disputeScore(matchId: string, reason: string): void
@@ -114,6 +118,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       matches: state.matches.map((m) => (m.id === match.id ? match : m)),
       auditLog: [...state.auditLog, ...audit],
     })
+
+    /**
+     * After a result becomes official, move the bracket along: create any
+     * next-round ties whose pairings are now decided, and crown the champion
+     * once the final is verified.
+     */
+    const withPlayoffProgress = (next: AppState, leagueId: string): { state: AppState; message?: string } => {
+      const league = next.leagues.find((l) => l.id === leagueId)
+      if (!league) return { state: next }
+      const adv = advancePlayoffs(league, next.matches, currentUser.id)
+      let matches = next.matches
+      let auditLog = next.auditLog
+      let message: string | undefined
+      if (adv.matches.length > 0) {
+        matches = [...matches, ...adv.matches]
+        auditLog = [...auditLog, ...adv.audit]
+        message = 'Bracket updated — the next playoff round is set.'
+      }
+      const alreadyCrowned = auditLog.some((a) => a.leagueId === leagueId && a.action === 'playoffs.champion')
+      if (adv.championTeamId && !alreadyCrowned) {
+        const champ = next.teams.find((t) => t.id === adv.championTeamId)
+        auditLog = [
+          ...auditLog,
+          auditEntry(leagueId, currentUser.id, 'playoffs.champion', `🏆 "${champ?.name}" won the final and are the ${league.name} champions.`),
+        ]
+        message = `🏆 ${champ?.name} are the champions of ${league.name}!`
+      }
+      return { state: { ...next, matches, auditLog }, message }
+    }
 
     return {
       state,
@@ -194,10 +227,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const eligible = officialTeams(state.teams, leagueId)
           if (eligible.length < 2) throw new Error('At least 2 official teams are required to generate fixtures.')
           const fixtures = generateRoundRobin(league, eligible, { double: league.scheduleFormat === 'double-round-robin' })
-          const withoutOld = state.matches.filter((m) => !(m.leagueId === leagueId && m.status === 'scheduled'))
+          const withoutOld = state.matches.filter(
+            (m) => !(m.leagueId === leagueId && m.status === 'scheduled' && m.stage !== 'playoff'),
+          )
           commit(
             { ...state, matches: [...withoutOld, ...fixtures] },
             `Schedule generated: ${fixtures.length} fixtures for ${eligible.length} official teams.`,
+          )
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      startPlayoffs: (leagueId) => {
+        try {
+          const league = leagueOf(leagueId)
+          const started = startPlayoffs(league, state.teams, state.matches, currentUser.id)
+          commit(
+            { ...state, matches: [...state.matches, ...started.matches], auditLog: [...state.auditLog, ...started.audit] },
+            `Playoffs are live — ${started.matches.length * 2} teams seeded into the bracket from the standings.`,
           )
         } catch (e) {
           fail(e)
@@ -223,7 +271,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { match, league } = matchCtx(matchId)
           const team = opposingTeamFor(state, match, currentUser.id)
           const event = confirmScore(league, match, team, currentUser)
-          commit(replaceMatch(event.match, event.audit), 'Result confirmed — the match is official and standings have updated.')
+          const progressed = withPlayoffProgress(replaceMatch(event.match, event.audit), league.id)
+          commit(
+            progressed.state,
+            progressed.message ??
+              (match.stage === 'playoff'
+                ? 'Result confirmed — the playoff result is official.'
+                : 'Result confirmed — the match is official and standings have updated.'),
+          )
         } catch (e) {
           fail(e)
         }
@@ -244,7 +299,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const { match, league } = matchCtx(matchId)
           const event = resolveDispute(league, match, currentUser, homeScore, awayScore)
-          commit(replaceMatch(event.match, event.audit), 'Dispute resolved — the result is official.')
+          const progressed = withPlayoffProgress(replaceMatch(event.match, event.audit), league.id)
+          commit(progressed.state, progressed.message ?? 'Dispute resolved — the result is official.')
         } catch (e) {
           fail(e)
         }
