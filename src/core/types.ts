@@ -86,6 +86,8 @@ export interface League {
   description: string
   country: string
   city: string
+  /** Default venue used when generating fixtures. */
+  homeVenue: string
   seasonStart: string // ISO date
   seasonEnd: string
   maxTeams: number

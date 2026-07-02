@@ -16,6 +16,7 @@ export function CreateLeagueScreen() {
     description: '',
     country: '',
     city: '',
+    homeVenue: '',
     seasonStart: '2026-08-01',
     seasonEnd: '2026-12-15',
     minTeams: 4,
@@ -72,6 +73,10 @@ export function CreateLeagueScreen() {
         <label className="field">
           <span>City</span>
           <input value={form.city} onChange={(e) => set('city', e.target.value)} />
+        </label>
+        <label className="field" style={{ gridColumn: '1 / -1' }}>
+          <span>Home venue (used for fixtures)</span>
+          <input value={form.homeVenue} onChange={(e) => set('homeVenue', e.target.value)} placeholder="Riverside Park, Pitch 2" />
         </label>
         <label className="field">
           <span>Season start</span>

@@ -20,9 +20,12 @@ The full product specification lives in [`docs/SPEC.md`](docs/SPEC.md).
 This repository contains the LeagueForge core engine and a premium, mobile-first client:
 
 - **Core domain engine** (`src/core/`) — pure, fully unit-tested TypeScript:
+  - `account.ts` — real account creation and identity verification: unique usernames,
+    email/phone validation, and 6-digit verification codes that gate every roster action.
+    Nothing ships pre-loaded — every user is created through this flow.
   - `league.ts` — league creation with commissioner role, scoring rules, tie-breakers,
-    privacy, and validation (the roster minimum can be raised but never drops below the
-    platform floor of **11 verified players**).
+    privacy, configurable home venue, and validation (the roster minimum can be raised but
+    never drops below the platform floor of **11 verified players**).
   - `team.ts` — the mandatory **Pending Team** lifecycle: teams are created pending,
     players join via an 8-character invite code / link / QR, captains approve joins, and
     the team **automatically activates** the moment the roster reaches the league minimum.
@@ -65,9 +68,16 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
   installed app launches instantly and works offline. Deployed to GitHub Pages on every
   push to `main` (`.github/workflows/deploy.yml`).
 
-State persists to `localStorage`; the app ships with a seeded demo league so it feels alive
-on first launch (four official teams, one team pending at 9/11, a verified result, a score
-awaiting confirmation, and an open dispute with evidence).
+The app starts **completely empty** — first launch is a real onboarding: create an
+account, verify your email, verify your phone (codes are generated locally and shown
+inline, clearly labelled as demo delivery, since the local build has no mail/SMS gateway).
+Multiple accounts can live on one device and be switched from the Profile tab, which is
+also how invite → approve → activate flows are exercised end-to-end. If you want a
+playground immediately, the **practice league** is an explicit opt-in: one tap generates a
+private sandbox season around *you* as commissioner (official teams built through the real
+pending → official flow, verified results, an open dispute, a team stuck at 9/11) so every
+feature can be explored without recruiting 44 friends first. State persists to
+`localStorage`.
 
 ## Getting started
 

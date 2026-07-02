@@ -3,21 +3,31 @@ import { Avatar, Badge, VerificationChecks } from './components'
 import { Icon, LeagueBadge, Crest } from './icons'
 
 export function ProfileScreen() {
-  const { state, currentUser, switchUser, resetDemo } = useStore()
+  const { state, currentUser, switchUser, signOut, eraseDevice } = useStore()
 
   const myTeams = state.teams.filter((t) => t.memberIds.includes(currentUser.id))
   const myLeagues = state.leagues.filter((l) => l.commissionerId === currentUser.id)
 
-  // Interesting identities for demoing every role from one device.
-  const captains = state.teams.map((t) => t.captainId)
-  const demoUsers = state.users.filter(
-    (u) => u.id === currentUser.id || captains.includes(u.id) || state.leagues.some((l) => l.commissionerId === u.id),
+  // Switchable identities: accounts created on this device, plus captains and
+  // commissioners of leagues the current user is part of (this is how you act
+  // as different roles in a practice league).
+  const relevantLeagueIds = new Set([
+    ...myLeagues.map((l) => l.id),
+    ...myTeams.map((t) => t.leagueId),
+  ])
+  const captains = state.teams.filter((t) => relevantLeagueIds.has(t.leagueId)).map((t) => t.captainId)
+  const switchable = state.users.filter(
+    (u) =>
+      u.id === currentUser.id ||
+      state.primaryAccountIds.includes(u.id) ||
+      captains.includes(u.id) ||
+      state.leagues.some((l) => relevantLeagueIds.has(l.id) && l.commissionerId === u.id),
   )
   const roleOf = (id: string) => {
     if (state.leagues.some((l) => l.commissionerId === id)) return 'Commissioner'
     const t = state.teams.find((x) => x.captainId === id)
     if (t) return `Captain · ${t.name}`
-    return 'Player'
+    return state.primaryAccountIds.includes(id) ? 'Account on this device' : 'Player'
   }
 
   return (
@@ -45,7 +55,7 @@ export function ProfileScreen() {
       <h2>Career</h2>
       <div className="card">
         {myTeams.length === 0 && myLeagues.length === 0 && (
-          <p className="faint" style={{ margin: 0 }}>No teams or leagues yet.</p>
+          <p className="faint" style={{ margin: 0 }}>No teams or leagues yet — create a league or join a team from the Home tab.</p>
         )}
         {myLeagues.map((l) => (
           <div className="listlink" key={l.id}>
@@ -63,30 +73,46 @@ export function ProfileScreen() {
         ))}
       </div>
 
-      <h2>Demo: switch identity</h2>
-      <p className="faint" style={{ marginTop: -2 }}>
-        LeagueForge separates commissioner, captain, player, and referee permissions. Switch identities to experience each
-        role&rsquo;s view of the same league.
-      </p>
-      <div className="card">
-        {demoUsers.map((u) => (
-          <div className="person" key={u.id}>
-            <Avatar user={u} />
-            <div className="grow">
-              <strong>@{u.username}</strong>
-              <div className="faint">{roleOf(u.id)}</div>
-            </div>
-            {u.id === currentUser.id ? (
-              <Badge kind="official">You</Badge>
-            ) : (
-              <button className="btn small" onClick={() => switchUser(u.id)}>Switch</button>
-            )}
+      {switchable.length > 1 && (
+        <>
+          <h2>Switch identity</h2>
+          <p className="faint" style={{ marginTop: -2 }}>
+            Accounts on this device, plus captains and commissioners in your leagues — switch to act in a different role.
+          </p>
+          <div className="card">
+            {switchable.map((u) => (
+              <div className="person" key={u.id}>
+                <Avatar user={u} />
+                <div className="grow">
+                  <strong>@{u.username}</strong>
+                  <div className="faint">{roleOf(u.id)}</div>
+                </div>
+                {u.id === currentUser.id ? (
+                  <Badge kind="official">You</Badge>
+                ) : (
+                  <button className="btn small" onClick={() => switchUser(u.id)}>Switch</button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
-      <button className="btn danger" onClick={resetDemo}>
-        <Icon name="x" size={15} /> Reset demo data
+      <h2>Account</h2>
+      <button className="btn" onClick={signOut}>
+        <Icon name="plus" size={15} /> Add another account
+      </button>
+      <button className="btn ghost" style={{ marginTop: 8 }} onClick={signOut}>
+        Sign out
+      </button>
+      <button
+        className="btn danger"
+        style={{ marginTop: 8 }}
+        onClick={() => {
+          if (window.confirm('Erase ALL LeagueForge data on this device? This cannot be undone.')) eraseDevice()
+        }}
+      >
+        <Icon name="x" size={15} /> Erase all data on this device
       </button>
     </div>
   )

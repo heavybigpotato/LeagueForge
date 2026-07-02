@@ -684,6 +684,22 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
 .toast.info .tico { color: var(--blue); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
 
+/* ------------------------------------------------ onboarding */
+.democode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  background: rgba(108, 196, 245, 0.09);
+  border: 1px dashed rgba(108, 196, 245, 0.4);
+  color: var(--blue);
+  border-radius: 12px;
+  padding: 11px 12px;
+  font-size: 13px;
+  margin-top: 6px;
+}
+.democode strong { letter-spacing: 0.18em; font-variant-numeric: tabular-nums; }
+
 /* ------------------------------------------------ misc */
 .empty { text-align: center; padding: 40px 18px; color: var(--faint); font-size: 13.5px; }
 .empty .eico {
