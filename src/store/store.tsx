@@ -6,8 +6,9 @@ import { generateRoundRobin } from '../core/schedule'
 import { addEvidence, checkIn, confirmScore, disputeScore, resolveDispute, submitScore } from '../core/match'
 import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
 import { auditEntry } from '../core/audit'
+import { createAccount, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
 import type { EvidenceKind } from '../core/types'
-import { seedDemoData } from './seed'
+import { buildPracticeLeague } from './practice'
 
 export interface Notification {
   id: number
@@ -17,7 +18,12 @@ export interface Notification {
 
 export interface AppState {
   users: User[]
-  currentUserId: string
+  /** Null until someone signs in — the app then shows onboarding. */
+  currentUserId: string | null
+  /** Accounts created through onboarding on this device (shown in the switcher). */
+  primaryAccountIds: string[]
+  /** Outstanding verification codes, keyed by user id. */
+  verifications: Record<string, PendingVerification>
   leagues: League[]
   teams: Team[]
   matches: Match[]
@@ -30,17 +36,32 @@ type Action =
   | { type: 'notify'; text: string; kind: Notification['kind'] }
   | { type: 'dismiss'; id: number }
 
-const STORAGE_KEY = 'leagueforge-state-v3'
+const STORAGE_KEY = 'leagueforge-state-v4'
 let notifSeq = 1
+
+/** The app ships empty — no pre-loaded users, leagues, or results. */
+export function emptyState(): AppState {
+  return {
+    users: [],
+    currentUserId: null,
+    primaryAccountIds: [],
+    verifications: {},
+    leagues: [],
+    teams: [],
+    matches: [],
+    auditLog: [],
+    notifications: [],
+  }
+}
 
 function loadInitialState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return { ...(JSON.parse(raw) as AppState), notifications: [] }
+    if (raw) return { ...emptyState(), ...(JSON.parse(raw) as AppState), notifications: [] }
   } catch {
-    /* corrupted state falls through to a fresh seed */
+    /* corrupted state falls through to a fresh start */
   }
-  return seedDemoData()
+  return emptyState()
 }
 
 function persist(state: AppState) {
@@ -69,9 +90,19 @@ function reducer(state: AppState, action: Action): AppState {
 
 export interface StoreApi {
   state: AppState
+  /**
+   * The signed-in account. Screens behind the onboarding gate can rely on
+   * this; it is null only while onboarding is shown.
+   */
   currentUser: User
+  signedIn: boolean
+  signUp(input: { username: string; email: string; phone: string }): User | undefined
+  verifyEmail(code: string): boolean
+  verifyPhone(code: string): boolean
+  signOut(): void
   switchUser(userId: string): void
-  resetDemo(): void
+  createPracticeLeague(): void
+  eraseDevice(): void
   dismiss(id: number): void
   createLeague(input: CreateLeagueInput): League | undefined
   createTeam(leagueId: string, input: { name: string; logo: string; primaryColor: string; secondaryColor: string; bio: string }): Team | undefined
@@ -93,7 +124,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState)
 
   const api = useMemo<StoreApi>(() => {
-    const currentUser = state.users.find((u) => u.id === state.currentUserId) ?? state.users[0]
+    const currentUser = (state.users.find((u) => u.id === state.currentUserId) ?? null) as User
 
     const commit = (next: AppState, message?: string, kind: Notification['kind'] = 'success') => {
       dispatch({ type: 'set', state: next })
@@ -151,11 +182,91 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return {
       state,
       currentUser,
-      switchUser: (userId) => commit({ ...state, currentUserId: userId }),
-      resetDemo: () => {
-        localStorage.removeItem(STORAGE_KEY)
-        commit(seedDemoData(), 'Demo data reset.', 'info')
+      signedIn: currentUser !== null,
+
+      signUp: (input) => {
+        try {
+          const { user, verification } = createAccount(input, state.users)
+          commit(
+            {
+              ...state,
+              users: [...state.users, user],
+              currentUserId: user.id,
+              primaryAccountIds: [...state.primaryAccountIds, user.id],
+              verifications: { ...state.verifications, [user.id]: verification },
+            },
+            `Welcome, @${user.username}! Verify your email and phone to compete.`,
+          )
+          return user
+        } catch (e) {
+          return fail(e) as undefined
+        }
       },
+
+      verifyEmail: (code) => {
+        try {
+          const verification = state.verifications[currentUser.id]
+          if (!verification) throw new Error('No verification is pending for this account.')
+          const user = verifyEmail(currentUser, verification, code)
+          commit({ ...state, users: state.users.map((u) => (u.id === user.id ? user : u)) }, 'Email verified ✓')
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      verifyPhone: (code) => {
+        try {
+          const verification = state.verifications[currentUser.id]
+          if (!verification) throw new Error('No verification is pending for this account.')
+          const user = verifyPhone(currentUser, verification, code)
+          const verifications = { ...state.verifications }
+          if (user.emailVerified) delete verifications[user.id]
+          commit(
+            { ...state, users: state.users.map((u) => (u.id === user.id ? user : u)), verifications },
+            'Phone verified ✓ — your account is ready.',
+          )
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      signOut: () => commit({ ...state, currentUserId: null }),
+      switchUser: (userId) => {
+        const user = state.users.find((u) => u.id === userId)
+        if (user) commit({ ...state, currentUserId: userId })
+      },
+
+      createPracticeLeague: () => {
+        try {
+          if (state.leagues.some((l) => l.commissionerId === currentUser.id && l.name === 'Practice League')) {
+            throw new Error('You already have a practice league.')
+          }
+          const data = buildPracticeLeague(currentUser, state.users)
+          commit(
+            {
+              ...state,
+              users: [...state.users, ...data.users],
+              leagues: [...state.leagues, data.league],
+              teams: [...state.teams, ...data.teams],
+              matches: [...state.matches, ...data.matches],
+              auditLog: [...state.auditLog, ...data.audit],
+            },
+            'Practice league ready — you are the commissioner. Explore standings, disputes, and playoffs freely.',
+          )
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      eraseDevice: () => {
+        localStorage.removeItem(STORAGE_KEY)
+        commit(emptyState(), 'All data on this device has been erased.', 'info')
+      },
+
       dismiss: (id) => dispatch({ type: 'dismiss', id }),
 
       createLeague: (input) => {

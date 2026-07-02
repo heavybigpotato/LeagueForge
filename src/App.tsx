@@ -1,7 +1,9 @@
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { StoreProvider, useStore } from './store/store'
+import { isVerifiedUser } from './core/types'
 import { Avatar, Toasts } from './ui/components'
 import { BrandMark, Icon } from './ui/icons'
+import { OnboardingScreen } from './ui/OnboardingScreen'
 import { HomeScreen } from './ui/HomeScreen'
 import { CreateLeagueScreen } from './ui/CreateLeagueScreen'
 import { LeagueScreen } from './ui/LeagueScreen'
@@ -14,6 +16,20 @@ import { ProfileScreen } from './ui/ProfileScreen'
 export default function App() {
   return (
     <StoreProvider>
+      <Gate />
+    </StoreProvider>
+  )
+}
+
+/** Everything behind this gate can rely on a signed-in, verified account. */
+function Gate() {
+  const { signedIn, currentUser } = useStore()
+  if (!signedIn || !isVerifiedUser(currentUser)) return <OnboardingScreen />
+  return <MainApp />
+}
+
+function MainApp() {
+  return (
       <HashRouter>
         <div className="phone">
           <TopBar />
@@ -47,7 +63,6 @@ export default function App() {
           </nav>
         </div>
       </HashRouter>
-    </StoreProvider>
   )
 }
 

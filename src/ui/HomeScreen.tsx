@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '../store/store'
-import { ActionCard, Badge, EmptyState, TeamLogo, formatDate, formatTime } from './components'
+import { ActionCard, Badge, TeamLogo, formatDate, formatTime } from './components'
 import { Icon, LeagueBadge } from './icons'
 
 export function HomeScreen() {
-  const { state, currentUser } = useStore()
+  const { state, currentUser, createPracticeLeague } = useStore()
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
@@ -127,10 +127,34 @@ export function HomeScreen() {
         </>
       )}
 
-      <h2>Your leagues</h2>
       {state.leagues.length === 0 && (
-        <EmptyState icon="trophy">No leagues yet. Create one and become its commissioner.</EmptyState>
+        <>
+          <h2>Get started</h2>
+          <ActionCard
+            to="/create-league"
+            icon="trophy"
+            tone="volt"
+            title="Create a league"
+            sub="You become the commissioner — set the rules, approve teams, run the season"
+          />
+          <ActionCard
+            to="/join"
+            icon="ticket"
+            tone="blue"
+            title="Join a team"
+            sub="Got an 8-character invite code from a captain? Enter it here"
+          />
+          <ActionCard
+            icon="sparkle"
+            tone="gold"
+            title="Generate a practice league"
+            sub="A private sandbox season built around you, so you can explore everything now"
+            onClick={createPracticeLeague}
+          />
+        </>
       )}
+
+      {state.leagues.length > 0 && <h2>Your leagues</h2>}
       {state.leagues.map((league) => {
         const official = state.teams.filter((t) => t.leagueId === league.id && t.status === 'official')
         const pending = state.teams.filter((t) => t.leagueId === league.id && t.status === 'pending')
@@ -161,9 +185,11 @@ export function HomeScreen() {
           </Link>
         )
       })}
-      <Link to="/create-league" className="btn primary" style={{ textDecoration: 'none', marginTop: 6 }}>
-        <Icon name="plus" size={16} /> Create a League
-      </Link>
+      {state.leagues.length > 0 && (
+        <Link to="/create-league" className="btn primary" style={{ textDecoration: 'none', marginTop: 6 }}>
+          <Icon name="plus" size={16} /> Create a League
+        </Link>
+      )}
     </div>
   )
 }

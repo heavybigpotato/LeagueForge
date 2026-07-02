@@ -11,6 +11,7 @@ export interface CreateLeagueInput {
   description: string
   country: string
   city: string
+  homeVenue?: string
   seasonStart: string
   seasonEnd: string
   maxTeams: number
@@ -53,6 +54,7 @@ export function createLeague(
     description: input.description,
     country: input.country,
     city: input.city,
+    homeVenue: input.homeVenue?.trim() || `${input.city || 'Local'} Arena`,
     seasonStart: input.seasonStart,
     seasonEnd: input.seasonEnd,
     maxTeams: input.maxTeams,

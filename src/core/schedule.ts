@@ -49,7 +49,7 @@ function makeMatch(league: League, round: number, homeTeamId: string, awayTeamId
     homeTeamId,
     awayTeamId,
     scheduledAt: date.toISOString(),
-    venue: venue ?? `${league.city} Arena`,
+    venue: venue ?? league.homeVenue,
     status: 'scheduled',
     evidence: [],
     checkIns: [],

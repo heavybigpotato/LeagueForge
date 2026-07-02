@@ -59,6 +59,34 @@ export function JoinScreen() {
           only be on one team per league.
         </span>
       </p>
+
+      <PendingRequests />
     </div>
+  )
+}
+
+/** Requests you've sent that are still waiting on a captain. */
+function PendingRequests() {
+  const { state, currentUser } = useStore()
+  const pending = state.teams.filter((t) => t.pendingMemberIds.includes(currentUser.id))
+  if (pending.length === 0) return null
+  return (
+    <>
+      <h2>Your pending requests</h2>
+      {pending.map((t) => {
+        const league = state.leagues.find((l) => l.id === t.leagueId)
+        return (
+          <div className="card" key={t.id}>
+            <div className="row">
+              <span style={{ color: 'var(--blue)' }}><Icon name="clock" size={16} /></span>
+              <div className="grow">
+                <strong>{t.name}</strong>
+                <div className="faint">{league?.name} · waiting for the captain to approve you</div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </>
   )
 }

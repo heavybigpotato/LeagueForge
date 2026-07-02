@@ -85,6 +85,10 @@ export function TeamScreen() {
           <div className="invite-code">{team.inviteCode}</div>
           <div className="faint" style={{ textAlign: 'center', position: 'relative' }}>{inviteLink(team.inviteCode)}</div>
           <InviteQR code={team.inviteCode} />
+          <div className="btnrow" style={{ position: 'relative', marginTop: 12 }}>
+            <button className="btn small" onClick={() => copyInvite(team.inviteCode, false)}>Copy code</button>
+            <button className="btn small" onClick={() => copyInvite(team.inviteCode, true)}>Share link</button>
+          </div>
         </div>
       )}
 
@@ -142,6 +146,20 @@ export function TeamScreen() {
       )}
     </div>
   )
+}
+
+/** Copy the code, or share the deep link via the native share sheet when available. */
+async function copyInvite(code: string, asLink: boolean) {
+  const link = `${window.location.origin}${window.location.pathname}#/join/${code}`
+  try {
+    if (asLink && navigator.share) {
+      await navigator.share({ title: 'Join my team on LeagueForge', url: link })
+      return
+    }
+    await navigator.clipboard.writeText(asLink ? link : code)
+  } catch {
+    /* user dismissed the share sheet, or clipboard unavailable */
+  }
 }
 
 /** Team-level season statistics — LeagueForge tracks the club, not individuals. */

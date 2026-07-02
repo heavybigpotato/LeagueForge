@@ -11,6 +11,7 @@ import { auditEntry } from './audit'
 import { evaluateSeasonAchievements } from './achievements'
 import { advancePlayoffs, bracket, bracketSize, startPlayoffs, winnerOf } from './playoffs'
 import { computeTeamStats } from './teamStats'
+import { createAccount, newVerificationCode, verifyEmail, verifyPhone } from './account'
 
 let userSeq = 0
 function makeUser(overrides: Partial<User> = {}): User {
@@ -74,6 +75,36 @@ describe('invite codes', () => {
     expect(code).toHaveLength(8)
     expect(code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/)
     expect(inviteLink('ABC12345')).toBe('leagueforge.app/join/ABC12345')
+  })
+})
+
+describe('accounts and verification', () => {
+  it('creates unverified accounts with 6-digit codes for email and phone', () => {
+    const { user, verification } = createAccount({ username: 'alex_r', email: 'alex@example.com', phone: '+15550001111' }, [])
+    expect(user.emailVerified).toBe(false)
+    expect(user.phoneVerified).toBe(false)
+    expect(verification.emailCode).toMatch(/^\d{6}$/)
+    expect(verification.phoneCode).toMatch(/^\d{6}$/)
+    expect(newVerificationCode()).toMatch(/^\d{6}$/)
+  })
+
+  it('rejects invalid or duplicate identities', () => {
+    const { user } = createAccount({ username: 'taken', email: 'taken@example.com', phone: '+15550001111' }, [])
+    expect(() => createAccount({ username: 'x', email: 'a@b.co', phone: '+15550001112' }, [user])).toThrow(/Username/)
+    expect(() => createAccount({ username: 'TAKEN', email: 'a@b.co', phone: '+15550001112' }, [user])).toThrow(/taken/)
+    expect(() => createAccount({ username: 'newuser', email: 'not-an-email', phone: '+15550001112' }, [user])).toThrow(/email/)
+    expect(() => createAccount({ username: 'newuser', email: 'taken@example.com', phone: '+15550001112' }, [user])).toThrow(/already exists/)
+    expect(() => createAccount({ username: 'newuser', email: 'a@b.co', phone: '12' }, [user])).toThrow(/phone/)
+  })
+
+  it('verification requires the exact codes, in either order', () => {
+    const { user, verification } = createAccount({ username: 'casey_v', email: 'c@example.com', phone: '+15550002222' }, [])
+    expect(() => verifyEmail(user, verification, '000000')).toThrow(/not correct/)
+    const emailDone = verifyEmail(user, verification, verification.emailCode)
+    expect(emailDone.emailVerified).toBe(true)
+    expect(() => verifyPhone(emailDone, verification, 'nope')).toThrow(/not correct/)
+    const done = verifyPhone(emailDone, verification, verification.phoneCode)
+    expect(done.phoneVerified).toBe(true)
   })
 })
 
