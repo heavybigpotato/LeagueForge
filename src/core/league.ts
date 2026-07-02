@@ -2,6 +2,7 @@ import type { AuditEntry, League, LeaguePrivacy, PlayoffFormat, ScheduleFormat, 
 import { auditEntry } from './audit'
 import { newId } from './ids'
 import { resolveMinPlayers } from './team'
+export type { ScoringRules }
 
 export interface CreateLeagueInput {
   name: string
@@ -69,10 +70,98 @@ export function createLeague(
     commissionerId: commissioner.id,
     refereeIds: [],
     allowTransfers: input.allowTransfers,
+    currentSeason: 1,
+    seasons: [],
+    announcements: [],
     createdAt: now,
   }
   return {
     league,
     audit: [auditEntry(league.id, commissioner.id, 'league.created', `League "${league.name}" created by commissioner @${commissioner.username}.`, now)],
+  }
+}
+
+export interface UpdateLeagueInput {
+  description?: string
+  homeVenue?: string
+  privacy?: LeaguePrivacy
+  allowTransfers?: boolean
+  scoring?: ScoringRules
+  /** Can be raised, never lowered below the platform floor or current value's floor. */
+  minPlayersPerTeam?: number
+  maxPlayersPerTeam?: number
+}
+
+/** Commissioner-only settings edit. Structural rules stay guarded. */
+export function updateLeague(
+  league: League,
+  actorId: string,
+  input: UpdateLeagueInput,
+  now: number = Date.now(),
+): { league: League; audit: AuditEntry[] } {
+  if (actorId !== league.commissionerId) throw new Error('Only the commissioner can edit league settings.')
+  const minPlayers = input.minPlayersPerTeam !== undefined ? resolveMinPlayers(input.minPlayersPerTeam) : league.minPlayersPerTeam
+  const maxPlayers = input.maxPlayersPerTeam ?? league.maxPlayersPerTeam
+  if (maxPlayers < minPlayers) throw new Error(`Maximum players per team cannot be below the minimum (${minPlayers}).`)
+  if (input.scoring) {
+    const { pointsForWin, pointsForDraw, pointsForLoss } = input.scoring
+    if (![pointsForWin, pointsForDraw, pointsForLoss].every((p) => Number.isInteger(p) && p >= 0)) {
+      throw new Error('Scoring points must be non-negative whole numbers.')
+    }
+    if (pointsForWin <= pointsForDraw) throw new Error('A win must be worth more than a draw.')
+  }
+  const next: League = {
+    ...league,
+    description: input.description ?? league.description,
+    homeVenue: input.homeVenue?.trim() || league.homeVenue,
+    privacy: input.privacy ?? league.privacy,
+    allowTransfers: input.allowTransfers ?? league.allowTransfers,
+    scoring: input.scoring ?? league.scoring,
+    minPlayersPerTeam: minPlayers,
+    maxPlayersPerTeam: maxPlayers,
+  }
+  return {
+    league: next,
+    audit: [auditEntry(league.id, actorId, 'league.updated', 'League settings updated by the commissioner.', now)],
+  }
+}
+
+/** Commissioner posts a bulletin the whole league can see. */
+export function postAnnouncement(
+  league: League,
+  author: User,
+  text: string,
+  now: number = Date.now(),
+): { league: League; audit: AuditEntry[] } {
+  if (author.id !== league.commissionerId) throw new Error('Only the commissioner can post announcements.')
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('Announcement cannot be empty.')
+  const announcement = { id: newId('ann'), authorId: author.id, at: now, text: trimmed }
+  return {
+    league: { ...league, announcements: [...league.announcements, announcement] },
+    audit: [auditEntry(league.id, author.id, 'league.announcement', `Commissioner announcement: ${trimmed.slice(0, 120)}`, now)],
+  }
+}
+
+/** Commissioner assigns (or removes) a verified account as league referee. */
+export function setReferee(
+  league: League,
+  actorId: string,
+  referee: User,
+  assign: boolean,
+  now: number = Date.now(),
+): { league: League; audit: AuditEntry[] } {
+  if (actorId !== league.commissionerId) throw new Error('Only the commissioner can assign referees.')
+  if (assign && !(referee.emailVerified && referee.phoneVerified)) {
+    throw new Error('Referees must have a verified email and phone number.')
+  }
+  const refereeIds = assign
+    ? [...new Set([...league.refereeIds, referee.id])]
+    : league.refereeIds.filter((id) => id !== referee.id)
+  return {
+    league: { ...league, refereeIds },
+    audit: [
+      auditEntry(league.id, actorId, 'league.referee-assigned', `@${referee.username} ${assign ? 'assigned as' : 'removed as'} league referee.`, now),
+    ],
   }
 }

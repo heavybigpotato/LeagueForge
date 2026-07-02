@@ -1,12 +1,13 @@
 import { createContext, useContext, useMemo, useReducer, type ReactNode } from 'react'
 import type { AuditEntry, League, Match, Team, User } from '../core/types'
-import { createLeague, type CreateLeagueInput } from '../core/league'
+import { createLeague, postAnnouncement, setReferee, updateLeague, type CreateLeagueInput, type UpdateLeagueInput } from '../core/league'
 import { approvePlayer, createPendingTeam, officialTeams, requestJoin } from '../core/team'
 import { generateRoundRobin } from '../core/schedule'
-import { addEvidence, checkIn, confirmScore, disputeScore, resolveDispute, rsvp, submitScore } from '../core/match'
+import { addEvidence, checkIn, confirmScore, disputeScore, rescheduleMatch, resolveDispute, rsvp, submitScore } from '../core/match'
 import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
+import { endSeason } from '../core/seasons'
 import { auditEntry } from '../core/audit'
-import { createAccount, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
+import { checkPassword, createAccount, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
 import type { EvidenceKind } from '../core/types'
 
 export interface Notification {
@@ -35,7 +36,7 @@ type Action =
   | { type: 'notify'; text: string; kind: Notification['kind'] }
   | { type: 'dismiss'; id: number }
 
-const STORAGE_KEY = 'leagueforge-state-v5'
+const STORAGE_KEY = 'leagueforge-state-v6'
 let notifSeq = 1
 
 /** The app ships empty — no pre-loaded users, leagues, or results. */
@@ -95,12 +96,18 @@ export interface StoreApi {
    */
   currentUser: User
   signedIn: boolean
-  signUp(input: { username: string; email: string; phone: string }): User | undefined
+  signUp(input: { username: string; email: string; phone: string; password: string }): User | undefined
   verifyEmail(code: string): boolean
   verifyPhone(code: string): boolean
   signOut(): void
-  switchUser(userId: string): void
+  /** Password-checked sign-in; also how identities are switched. */
+  signIn(userId: string, password: string): boolean
   eraseDevice(): void
+  updateLeague(leagueId: string, input: UpdateLeagueInput): boolean
+  postAnnouncement(leagueId: string, text: string): void
+  setReferee(leagueId: string, userId: string, assign: boolean): void
+  rescheduleMatch(matchId: string, changes: { scheduledAt?: string; venue?: string }): boolean
+  endSeason(leagueId: string): void
   dismiss(id: number): void
   createLeague(input: CreateLeagueInput): League | undefined
   createTeam(leagueId: string, input: { name: string; logo: string; primaryColor: string; secondaryColor: string; bio: string }): Team | undefined
@@ -166,7 +173,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         auditLog = [...auditLog, ...adv.audit]
         message = 'Bracket updated — the next playoff round is set.'
       }
-      const alreadyCrowned = auditLog.some((a) => a.leagueId === leagueId && a.action === 'playoffs.champion')
+      // one crowning per season: champions ≤ archived seasons means this
+      // season's champion hasn't been announced yet
+      const crownings = auditLog.filter((a) => a.leagueId === leagueId && a.action === 'playoffs.champion').length
+      const seasonsEnded = auditLog.filter((a) => a.leagueId === leagueId && a.action === 'season.ended').length
+      const alreadyCrowned = crownings > seasonsEnded
       if (adv.championTeamId && !alreadyCrowned) {
         const champ = next.teams.find((t) => t.id === adv.championTeamId)
         auditLog = [
@@ -234,9 +245,90 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
 
       signOut: () => commit({ ...state, currentUserId: null }),
-      switchUser: (userId) => {
-        const user = state.users.find((u) => u.id === userId)
-        if (user) commit({ ...state, currentUserId: userId })
+      signIn: (userId, password) => {
+        try {
+          const user = state.users.find((u) => u.id === userId)
+          if (!user) throw new Error('Account not found.')
+          if (!checkPassword(user, password)) throw new Error('Wrong password for @' + user.username + '.')
+          commit({ ...state, currentUserId: userId })
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      updateLeague: (leagueId, input) => {
+        try {
+          const league = leagueOf(leagueId)
+          const { league: next, audit } = updateLeague(league, currentUser.id, input)
+          commit(
+            { ...state, leagues: state.leagues.map((l) => (l.id === next.id ? next : l)), auditLog: [...state.auditLog, ...audit] },
+            'League settings saved.',
+          )
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      postAnnouncement: (leagueId, text) => {
+        try {
+          const league = leagueOf(leagueId)
+          const { league: next, audit } = postAnnouncement(league, currentUser, text)
+          commit(
+            { ...state, leagues: state.leagues.map((l) => (l.id === next.id ? next : l)), auditLog: [...state.auditLog, ...audit] },
+            'Announcement posted to the league.',
+          )
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      setReferee: (leagueId, userId, assign) => {
+        try {
+          const league = leagueOf(leagueId)
+          const referee = state.users.find((u) => u.id === userId)
+          if (!referee) throw new Error('Account not found.')
+          const { league: next, audit } = setReferee(league, currentUser.id, referee, assign)
+          commit(
+            { ...state, leagues: state.leagues.map((l) => (l.id === next.id ? next : l)), auditLog: [...state.auditLog, ...audit] },
+            assign ? '@' + referee.username + ' can now verify results and resolve disputes.' : 'Referee removed.',
+          )
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      rescheduleMatch: (matchId, changes) => {
+        try {
+          const { match, league } = matchCtx(matchId)
+          const event = rescheduleMatch(league, match, currentUser.id, changes)
+          commit(replaceMatch(event.match, event.audit), 'Fixture rescheduled — both teams can see the change.')
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      endSeason: (leagueId) => {
+        try {
+          const league = leagueOf(leagueId)
+          const ended = endSeason(league, state.teams, state.matches, currentUser.id)
+          commit(
+            {
+              ...state,
+              leagues: state.leagues.map((l) => (l.id === ended.league.id ? ended.league : l)),
+              teams: state.teams.map((t) => ended.teams.find((x) => x.id === t.id) ?? t),
+              auditLog: [...state.auditLog, ...ended.audit],
+            },
+            'Season ' + league.currentSeason + ' archived to league history. Season ' + ended.league.currentSeason + ' is live — rosters unlocked.',
+          )
+        } catch (e) {
+          fail(e)
+        }
       },
 
       eraseDevice: () => {
@@ -314,13 +406,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (currentUser.id !== league.commissionerId) throw new Error('Only the commissioner can generate the schedule.')
           const eligible = officialTeams(state.teams, leagueId)
           if (eligible.length < 2) throw new Error('At least 2 official teams are required to generate fixtures.')
+
+          if (league.scheduleFormat === 'knockout') {
+            // Cup format: the season IS the bracket.
+            const started = startPlayoffs(league, state.teams, state.matches, currentUser.id)
+            commit(
+              { ...state, matches: [...state.matches, ...started.matches], auditLog: [...state.auditLog, ...started.audit] },
+              `Cup drawn: ${started.matches.length * 2} teams enter the knockout bracket.`,
+            )
+            return
+          }
+
           const fixtures = generateRoundRobin(league, eligible, { double: league.scheduleFormat === 'double-round-robin' })
           const withoutOld = state.matches.filter(
-            (m) => !(m.leagueId === leagueId && m.status === 'scheduled' && m.stage !== 'playoff'),
+            (m) =>
+              !(
+                m.leagueId === leagueId &&
+                m.status === 'scheduled' &&
+                m.stage !== 'playoff' &&
+                (m.season ?? 1) === league.currentSeason
+              ),
           )
           commit(
             { ...state, matches: [...withoutOld, ...fixtures] },
-            `Schedule generated: ${fixtures.length} fixtures for ${eligible.length} official teams.`,
+            `Season ${league.currentSeason} schedule generated: ${fixtures.length} fixtures for ${eligible.length} official teams.`,
           )
         } catch (e) {
           fail(e)

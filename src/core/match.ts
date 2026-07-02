@@ -116,6 +116,33 @@ export function addEvidence(league: League, match: Match, uploader: User, kind: 
   }
 }
 
+/** Commissioner moves a fixture to a new date and/or venue. */
+export function rescheduleMatch(
+  league: League,
+  match: Match,
+  actorId: string,
+  changes: { scheduledAt?: string; venue?: string },
+  now: number = Date.now(),
+): MatchEvent {
+  if (actorId !== league.commissionerId) throw new Error('Only the commissioner can reschedule a match.')
+  if (match.status !== 'scheduled') throw new Error('Only unplayed fixtures can be rescheduled.')
+  const scheduledAt = changes.scheduledAt ?? match.scheduledAt
+  if (Number.isNaN(new Date(scheduledAt).getTime())) throw new Error('Enter a valid date and time.')
+  const venue = changes.venue?.trim() || match.venue
+  return {
+    match: { ...match, scheduledAt, venue },
+    audit: [
+      auditEntry(
+        league.id,
+        actorId,
+        'match.rescheduled',
+        `Fixture moved to ${new Date(scheduledAt).toLocaleString()} at ${venue}.`,
+        now,
+      ),
+    ],
+  }
+}
+
 /**
  * RSVP availability for an upcoming fixture. Only rostered players on a
  * competing team can answer; answers can be changed until kickoff. Captains

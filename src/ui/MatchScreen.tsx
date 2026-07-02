@@ -95,6 +95,8 @@ export function MatchScreen() {
         </Link>
       )}
 
+      {match.status === 'scheduled' && isCommissioner && <RescheduleCard match={match} />}
+
       {match.status === 'scheduled' && myTeam && (
         <div className="card">
           <div className="row" style={{ gap: 8 }}>
@@ -259,6 +261,51 @@ export function MatchScreen() {
         </div>
     )
   }
+}
+
+/** Commissioner tool: move an unplayed fixture to a new date or venue. */
+function RescheduleCard({ match }: { match: Match }) {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [when, setWhen] = useState(() => match.scheduledAt.slice(0, 16))
+  const [venue, setVenue] = useState(match.venue)
+  if (!open) {
+    return (
+      <button className="btn ghost" style={{ marginBottom: 10 }} onClick={() => setOpen(true)}>
+        <Icon name="calendar" size={15} /> Reschedule fixture
+      </button>
+    )
+  }
+  return (
+    <div className="card">
+      <div className="row" style={{ gap: 8 }}>
+        <span style={{ color: 'var(--blue)' }}><Icon name="calendar" size={16} /></span>
+        <strong>Reschedule</strong>
+      </div>
+      <div className="fieldgrid" style={{ marginTop: 10 }}>
+        <label className="field">
+          <span>Date &amp; time</span>
+          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Venue</span>
+          <input value={venue} onChange={(e) => setVenue(e.target.value)} />
+        </label>
+      </div>
+      <div className="btnrow">
+        <button
+          className="btn primary"
+          onClick={() => {
+            const ok = store.rescheduleMatch(match.id, { scheduledAt: new Date(when).toISOString(), venue })
+            if (ok) setOpen(false)
+          }}
+        >
+          Save
+        </button>
+        <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  )
 }
 
 /** Team-level history between the two clubs — verified meetings only. */

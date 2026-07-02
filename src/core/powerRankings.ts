@@ -25,7 +25,14 @@ export function powerRankings(league: League, teams: Team[], matches: Match[]): 
   if (official.length === 0) return []
 
   const verified = matches
-    .filter((m) => m.leagueId === league.id && m.status === 'official' && m.result && m.stage !== 'playoff')
+    .filter(
+      (m) =>
+        m.leagueId === league.id &&
+        m.status === 'official' &&
+        m.result &&
+        m.stage !== 'playoff' &&
+        (m.season ?? 1) === league.currentSeason,
+    )
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
 
   const latestRound = Math.max(0, ...verified.map((m) => m.round))

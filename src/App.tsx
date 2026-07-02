@@ -7,6 +7,7 @@ import { OnboardingScreen } from './ui/OnboardingScreen'
 import { HomeScreen } from './ui/HomeScreen'
 import { CreateLeagueScreen } from './ui/CreateLeagueScreen'
 import { LeagueScreen } from './ui/LeagueScreen'
+import { LeagueSettingsScreen } from './ui/LeagueSettingsScreen'
 import { CreateTeamScreen } from './ui/CreateTeamScreen'
 import { TeamScreen } from './ui/TeamScreen'
 import { MatchScreen } from './ui/MatchScreen'
@@ -39,6 +40,7 @@ function MainApp() {
               <Route path="/" element={<HomeScreen />} />
               <Route path="/create-league" element={<CreateLeagueScreen />} />
               <Route path="/league/:leagueId" element={<LeagueScreen />} />
+              <Route path="/league/:leagueId/settings" element={<LeagueSettingsScreen />} />
               <Route path="/league/:leagueId/create-team" element={<CreateTeamScreen />} />
               <Route path="/team/:teamId" element={<TeamScreen />} />
               <Route path="/match/:matchId" element={<MatchScreen />} />

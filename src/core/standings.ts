@@ -14,7 +14,12 @@ export function computeStandings(league: League, teams: Team[], matches: Match[]
   )
 
   const verified = matches.filter(
-    (m) => m.leagueId === league.id && m.status === 'official' && m.result && m.stage !== 'playoff',
+    (m) =>
+      m.leagueId === league.id &&
+      m.status === 'official' &&
+      m.result &&
+      m.stage !== 'playoff' &&
+      (m.season ?? 1) === league.currentSeason,
   )
   for (const m of verified) {
     const home = rows.get(m.homeTeamId)

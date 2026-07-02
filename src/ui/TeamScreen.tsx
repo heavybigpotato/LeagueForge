@@ -19,7 +19,13 @@ export function TeamScreen() {
   const captain = state.users.find((u) => u.id === team.captainId)
   const isCaptain = currentUser.id === team.captainId
   const userOf = (id: string) => state.users.find((u) => u.id === id)
-  const championships = state.leagues.filter((l) => bracket(l.id, state.matches)?.championTeamId === team.id).length
+  const championships = state.leagues.reduce(
+    (count, l) =>
+      count +
+      l.seasons.filter((s) => s.championTeamId === team.id).length +
+      (bracket(l.id, state.matches, l.currentSeason)?.championTeamId === team.id ? 1 : 0),
+    0,
+  )
 
   return (
     <div>
@@ -168,7 +174,10 @@ async function copyInvite(code: string, asLink: boolean) {
 /** Team-level season statistics — LeagueForge tracks the club, not individuals. */
 function SeasonStats({ team }: { team: Team }) {
   const { state } = useStore()
-  const leagueMatches = state.matches.filter((m) => m.leagueId === team.leagueId)
+  const league = state.leagues.find((l) => l.id === team.leagueId)
+  const leagueMatches = state.matches.filter(
+    (m) => m.leagueId === team.leagueId && (m.season ?? 1) === (league?.currentSeason ?? 1),
+  )
   const s = computeTeamStats(team.id, leagueMatches)
   if (s.played === 0) return null
   const opponent = state.teams.find((t) => t.id === s.biggestWin?.opponentTeamId)

@@ -10,12 +10,12 @@ import { Crest, Icon } from './icons'
 import { MatchBadge } from './LeagueScreen'
 
 export function PlayoffsTab({ league }: { league: League }) {
-  const { state, currentUser, startPlayoffs } = useStore()
+  const { state, currentUser, startPlayoffs, endSeason } = useStore()
   const teams = state.teams.filter((t) => t.leagueId === league.id)
-  const leagueMatches = state.matches.filter((m) => m.leagueId === league.id)
+  const leagueMatches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
   const isCommissioner = currentUser.id === league.commissionerId
-  const started = playoffsStarted(league.id, state.matches)
-  const b = started ? bracket(league.id, state.matches) : null
+  const started = playoffsStarted(league.id, state.matches, league.currentSeason)
+  const b = started ? bracket(league.id, state.matches, league.currentSeason) : null
   const official = teams.filter((t) => t.status === 'official')
   const regularDone = leagueMatches.filter((m) => m.stage !== 'playoff' && m.status !== 'official').length === 0
 
@@ -36,7 +36,10 @@ export function PlayoffsTab({ league }: { league: League }) {
                 </p>
               )}
               <button className="btn primary" onClick={() => startPlayoffs(league.id)} disabled={official.length < 2}>
-                <Icon name="trophy" size={16} /> Start Playoffs ({Math.min(official.length, 4) >= 4 ? 'top 4' : 'top 2'} qualify)
+                <Icon name="trophy" size={16} />{' '}
+                {league.scheduleFormat === 'knockout'
+                  ? 'Draw the cup bracket'
+                  : `Start Playoffs (${Math.min(official.length, 4) >= 4 ? 'top 4' : 'top 2'} qualify)`}
               </button>
             </>
           )}
@@ -46,6 +49,11 @@ export function PlayoffsTab({ league }: { league: League }) {
       {b && (
         <>
           <ChampionCard league={league} teams={teams} championTeamId={b.championTeamId} />
+          {b.championTeamId && isCommissioner && (
+            <button className="btn primary" style={{ marginBottom: 12 }} onClick={() => endSeason(league.id)}>
+              <Icon name="scroll" size={16} /> End Season {league.currentSeason} &amp; archive to history
+            </button>
+          )}
           <div className="bracket">
             {b.rounds.map((round, i) => (
               <div className="roundcol" key={i}>

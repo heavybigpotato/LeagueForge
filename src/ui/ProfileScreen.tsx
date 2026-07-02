@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useStore } from '../store/store'
 import { Avatar, Badge, VerificationChecks } from './components'
 import { Icon, LeagueBadge, Crest } from './icons'
 
 export function ProfileScreen() {
-  const { state, currentUser, switchUser, signOut, eraseDevice } = useStore()
+  const { state, currentUser, signIn, signOut, eraseDevice } = useStore()
+  const [switchFor, setSwitchFor] = useState<string | null>(null)
+  const [switchPassword, setSwitchPassword] = useState('')
 
   const myTeams = state.teams.filter((t) => t.memberIds.includes(currentUser.id))
   const myLeagues = state.leagues.filter((l) => l.commissionerId === currentUser.id)
@@ -80,16 +83,42 @@ export function ProfileScreen() {
           </p>
           <div className="card">
             {switchable.map((u) => (
-              <div className="person" key={u.id}>
-                <Avatar user={u} />
-                <div className="grow">
-                  <strong>@{u.username}</strong>
-                  <div className="faint">{roleOf(u.id)}</div>
+              <div key={u.id}>
+                <div className="person">
+                  <Avatar user={u} />
+                  <div className="grow">
+                    <strong>@{u.username}</strong>
+                    <div className="faint">{roleOf(u.id)}</div>
+                  </div>
+                  {u.id === currentUser.id ? (
+                    <Badge kind="official">You</Badge>
+                  ) : (
+                    <button
+                      className="btn small"
+                      onClick={() => {
+                        setSwitchFor(switchFor === u.id ? null : u.id)
+                        setSwitchPassword('')
+                      }}
+                    >
+                      {switchFor === u.id ? 'Cancel' : 'Switch'}
+                    </button>
+                  )}
                 </div>
-                {u.id === currentUser.id ? (
-                  <Badge kind="official">You</Badge>
-                ) : (
-                  <button className="btn small" onClick={() => switchUser(u.id)}>Switch</button>
+                {switchFor === u.id && (
+                  <div className="row" style={{ padding: '0 0 12px', gap: 8 }}>
+                    <input
+                      type="password"
+                      placeholder={`Password for @${u.username}`}
+                      autoComplete="current-password"
+                      value={switchPassword}
+                      onChange={(e) => setSwitchPassword(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && signIn(u.id, switchPassword)}
+                      autoFocus
+                    />
+                    <button className="btn primary small" onClick={() => signIn(u.id, switchPassword)}>
+                      Sign in
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

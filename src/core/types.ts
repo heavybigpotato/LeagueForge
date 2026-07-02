@@ -17,6 +17,9 @@ export interface User {
   username: string
   email: string
   phone: string
+  /** Salted password hash — accounts are protected, switching requires sign-in. */
+  passwordHash: string
+  passwordSalt: string
   emailVerified: boolean
   phoneVerified: boolean
   idVerified: boolean
@@ -43,10 +46,30 @@ export type PlayoffFormat =
 export type ScheduleFormat =
   | 'round-robin'
   | 'double-round-robin'
+  /** Straight cup: the whole season is a single-elimination bracket. */
   | 'knockout'
   | 'swiss'
   | 'ladder'
   | 'groups'
+
+/** Frozen record of a completed season. */
+export interface SeasonRecord {
+  season: number
+  endedAt: number
+  championTeamId?: Id
+  /** Regular-season table leader (may differ from the playoff champion). */
+  tableLeaderTeamId?: Id
+  /** Final table snapshot at the moment the season closed. */
+  table: StandingRow[]
+}
+
+/** Commissioner bulletin visible to the whole league. */
+export interface Announcement {
+  id: Id
+  authorId: Id
+  at: number
+  text: string
+}
 
 export type Sport =
   | 'football'
@@ -103,6 +126,11 @@ export interface League {
   commissionerId: Id
   refereeIds: Id[]
   allowTransfers: boolean
+  /** 1-based; every match is stamped with the season it belongs to. */
+  currentSeason: number
+  /** Archive of completed seasons, oldest first. */
+  seasons: SeasonRecord[]
+  announcements: Announcement[]
   createdAt: number
 }
 
@@ -188,6 +216,8 @@ export interface Match {
   scheduledAt: string // ISO datetime
   venue: string
   status: MatchStatus
+  /** Season this match belongs to (older records default to 1). */
+  season?: number
   /** Absent/'regular' matches feed the standings; playoff matches feed the bracket. */
   stage?: 'regular' | 'playoff'
   /** Bracket coordinates, set only when stage === 'playoff'. */
@@ -207,6 +237,11 @@ export interface Match {
 
 export type AuditAction =
   | 'league.created'
+  | 'league.updated'
+  | 'league.announcement'
+  | 'league.referee-assigned'
+  | 'season.ended'
+  | 'match.rescheduled'
   | 'team.created'
   | 'team.player-joined'
   | 'team.player-approved'
