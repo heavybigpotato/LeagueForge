@@ -10,6 +10,7 @@ import { LeagueScreen } from './ui/LeagueScreen'
 import { CreateTeamScreen } from './ui/CreateTeamScreen'
 import { TeamScreen } from './ui/TeamScreen'
 import { MatchScreen } from './ui/MatchScreen'
+import { LiveScoreboardScreen } from './ui/LiveScoreboardScreen'
 import { JoinScreen } from './ui/JoinScreen'
 import { ProfileScreen } from './ui/ProfileScreen'
 
@@ -41,6 +42,7 @@ function MainApp() {
               <Route path="/league/:leagueId/create-team" element={<CreateTeamScreen />} />
               <Route path="/team/:teamId" element={<TeamScreen />} />
               <Route path="/match/:matchId" element={<MatchScreen />} />
+              <Route path="/match/:matchId/live" element={<LiveScoreboardScreen />} />
               <Route path="/join" element={<JoinScreen />} />
               <Route path="/join/:code" element={<JoinScreen />} />
               <Route path="/profile" element={<ProfileScreen />} />

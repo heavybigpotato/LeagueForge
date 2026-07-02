@@ -116,6 +116,39 @@ export function addEvidence(league: League, match: Match, uploader: User, kind: 
   }
 }
 
+/**
+ * RSVP availability for an upcoming fixture. Only rostered players on a
+ * competing team can answer; answers can be changed until kickoff. Captains
+ * see the headcount at a glance — no more chasing 11 people in a group chat.
+ */
+export function rsvp(
+  league: League,
+  match: Match,
+  user: User,
+  team: Team,
+  status: 'in' | 'out',
+  now: number = Date.now(),
+): MatchEvent {
+  if (match.status !== 'scheduled') throw new Error('RSVPs are open only before the match is played.')
+  if (team.id !== match.homeTeamId && team.id !== match.awayTeamId) {
+    throw new Error('Only players on a competing team can RSVP.')
+  }
+  if (!team.memberIds.includes(user.id)) throw new Error('Only rostered players can RSVP.')
+  const others = (match.rsvps ?? []).filter((r) => r.userId !== user.id)
+  return {
+    match: { ...match, rsvps: [...others, { userId: user.id, teamId: team.id, status, at: now }] },
+    audit: [
+      auditEntry(league.id, user.id, 'match.rsvp', `@${user.username} is ${status === 'in' ? 'IN' : 'OUT'} for ${team.name}'s upcoming fixture.`, now),
+    ],
+  }
+}
+
+/** Headcount for one side of a fixture. */
+export function rsvpCount(match: Match, teamId: string): { in: number; out: number } {
+  const rs = (match.rsvps ?? []).filter((r) => r.teamId === teamId)
+  return { in: rs.filter((r) => r.status === 'in').length, out: rs.filter((r) => r.status === 'out').length }
+}
+
 /** QR check-in before the match records time, attendance, team and match. */
 export function checkIn(league: League, match: Match, user: User, teamId: string, gpsValidated: boolean, now: number = Date.now()): MatchEvent {
   if (match.checkIns.some((c) => c.userId === user.id)) throw new Error('Already checked in.')

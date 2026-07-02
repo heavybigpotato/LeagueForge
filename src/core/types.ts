@@ -171,6 +171,14 @@ export interface CheckIn {
   gpsValidated: boolean
 }
 
+/** Availability answer for an upcoming fixture. */
+export interface Rsvp {
+  userId: Id
+  teamId: Id
+  status: 'in' | 'out'
+  at: number
+}
+
 export interface Match {
   id: Id
   leagueId: Id
@@ -191,6 +199,8 @@ export interface Match {
   disputeReason?: string
   evidence: Evidence[]
   checkIns: CheckIn[]
+  /** Availability answers from rostered players (optional for older records). */
+  rsvps?: Rsvp[]
 }
 
 // ---------------------------------------------------------------- Audit log
@@ -208,6 +218,7 @@ export type AuditAction =
   | 'match.disputed'
   | 'match.evidence-added'
   | 'match.check-in'
+  | 'match.rsvp'
   | 'match.resolved'
   | 'playoffs.started'
   | 'playoffs.advanced'

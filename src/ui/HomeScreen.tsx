@@ -4,7 +4,7 @@ import { ActionCard, Badge, TeamLogo, formatDate, formatTime } from './component
 import { Icon, LeagueBadge } from './icons'
 
 export function HomeScreen() {
-  const { state, currentUser, createPracticeLeague } = useStore()
+  const { state, currentUser } = useStore()
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
@@ -143,13 +143,6 @@ export function HomeScreen() {
             tone="blue"
             title="Join a team"
             sub="Got an 8-character invite code from a captain? Enter it here"
-          />
-          <ActionCard
-            icon="sparkle"
-            tone="gold"
-            title="Generate a practice league"
-            sub="A private sandbox season built around you, so you can explore everything now"
-            onClick={createPracticeLeague}
           />
         </>
       )}

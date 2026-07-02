@@ -3,12 +3,11 @@ import type { AuditEntry, League, Match, Team, User } from '../core/types'
 import { createLeague, type CreateLeagueInput } from '../core/league'
 import { approvePlayer, createPendingTeam, officialTeams, requestJoin } from '../core/team'
 import { generateRoundRobin } from '../core/schedule'
-import { addEvidence, checkIn, confirmScore, disputeScore, resolveDispute, submitScore } from '../core/match'
+import { addEvidence, checkIn, confirmScore, disputeScore, resolveDispute, rsvp, submitScore } from '../core/match'
 import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
 import { auditEntry } from '../core/audit'
 import { createAccount, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
 import type { EvidenceKind } from '../core/types'
-import { buildPracticeLeague } from './practice'
 
 export interface Notification {
   id: number
@@ -36,7 +35,7 @@ type Action =
   | { type: 'notify'; text: string; kind: Notification['kind'] }
   | { type: 'dismiss'; id: number }
 
-const STORAGE_KEY = 'leagueforge-state-v4'
+const STORAGE_KEY = 'leagueforge-state-v5'
 let notifSeq = 1
 
 /** The app ships empty — no pre-loaded users, leagues, or results. */
@@ -101,7 +100,6 @@ export interface StoreApi {
   verifyPhone(code: string): boolean
   signOut(): void
   switchUser(userId: string): void
-  createPracticeLeague(): void
   eraseDevice(): void
   dismiss(id: number): void
   createLeague(input: CreateLeagueInput): League | undefined
@@ -116,6 +114,7 @@ export interface StoreApi {
   resolveDispute(matchId: string, homeScore: number, awayScore: number): void
   addEvidence(matchId: string, kind: EvidenceKind, note: string): void
   checkIn(matchId: string, teamId: string): void
+  rsvp(matchId: string, teamId: string, status: 'in' | 'out'): void
 }
 
 const StoreContext = createContext<StoreApi | null>(null)
@@ -238,28 +237,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       switchUser: (userId) => {
         const user = state.users.find((u) => u.id === userId)
         if (user) commit({ ...state, currentUserId: userId })
-      },
-
-      createPracticeLeague: () => {
-        try {
-          if (state.leagues.some((l) => l.commissionerId === currentUser.id && l.name === 'Practice League')) {
-            throw new Error('You already have a practice league.')
-          }
-          const data = buildPracticeLeague(currentUser, state.users)
-          commit(
-            {
-              ...state,
-              users: [...state.users, ...data.users],
-              leagues: [...state.leagues, data.league],
-              teams: [...state.teams, ...data.teams],
-              matches: [...state.matches, ...data.matches],
-              auditLog: [...state.auditLog, ...data.audit],
-            },
-            'Practice league ready — you are the commissioner. Explore standings, disputes, and playoffs freely.',
-          )
-        } catch (e) {
-          fail(e)
-        }
       },
 
       eraseDevice: () => {
@@ -432,6 +409,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { match, league } = matchCtx(matchId)
           const event = checkIn(league, match, currentUser, teamId, true)
           commit(replaceMatch(event.match, event.audit), 'Checked in — attendance recorded with GPS validation.')
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      rsvp: (matchId, teamId, status) => {
+        try {
+          const { match, league } = matchCtx(matchId)
+          const team = state.teams.find((t) => t.id === teamId)
+          if (!team) throw new Error('Team not found.')
+          const event = rsvp(league, match, currentUser, team, status)
+          commit(replaceMatch(event.match, event.audit), status === 'in' ? "You're in — your captain can see the headcount." : 'Marked as out for this fixture.')
         } catch (e) {
           fail(e)
         }

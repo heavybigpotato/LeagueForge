@@ -46,6 +46,11 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
     champion is crowned when the final is verified.
   - `teamStats.ts` — team-level season statistics (record, home/away splits, streaks,
     clean sheets, biggest win). LeagueForge deliberately tracks the club, not individuals.
+  - `powerRankings.ts` — weekly Power Rankings that go beyond the table: form, capped
+    margin of victory, strength of opponent, and recency weighting, with movement arrows
+    since the last round. Verified regular-season results only.
+  - RSVP availability in `match.ts` — rostered players answer In/Out per fixture and
+    captains see the headcount, with every answer in the audit log.
   - `audit.ts` — append-only, frozen audit entries; there is deliberately no edit/delete API.
   - `achievements.ts` — season awards (Champion, Perfect Season, Top Defense) derived from
     verified results.
@@ -63,6 +68,16 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
   winners, a gold champions card, and season honors), the standings mark the playoff
   qualification zone, match pages show team-level head-to-head history, and invite
   tickets render a **real scannable QR code** that deep-links into the join flow.
+- **Match Day Live** — a full-screen courtside scoreboard for competing captains: running
+  clock, big tap targets per side, undo, and a full-time button that hands the score
+  straight to the two-captain verification pipeline (the live board never edits standings
+  directly).
+- **Shareable graphics** — verified results and standings export as polished 1080×1350
+  cards (crests, score, venue, verification ribbon, LeagueForge mark) via the native share
+  sheet, so every result can go straight to the group chat or a story.
+- **Power Rankings** on the standings tab with per-round movement, and **RSVP
+  availability** on every upcoming fixture so captains know their headcount before
+  kickoff. Team pages show championship honors won through the playoffs.
 - **Installable PWA** — web app manifest, generated app icons, iOS home-screen support,
   and a service worker (network-first navigations, cache-first hashed assets) so the
   installed app launches instantly and works offline. Deployed to GitHub Pages on every
@@ -72,12 +87,8 @@ The app starts **completely empty** — first launch is a real onboarding: creat
 account, verify your email, verify your phone (codes are generated locally and shown
 inline, clearly labelled as demo delivery, since the local build has no mail/SMS gateway).
 Multiple accounts can live on one device and be switched from the Profile tab, which is
-also how invite → approve → activate flows are exercised end-to-end. If you want a
-playground immediately, the **practice league** is an explicit opt-in: one tap generates a
-private sandbox season around *you* as commissioner (official teams built through the real
-pending → official flow, verified results, an open dispute, a team stuck at 9/11) so every
-feature can be explored without recruiting 44 friends first. State persists to
-`localStorage`.
+also how invite → approve → activate flows are exercised end-to-end. There is no
+pre-loaded or generated sample data of any kind. State persists to `localStorage`.
 
 ## Getting started
 
