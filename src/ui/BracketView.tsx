@@ -9,7 +9,7 @@ import { Badge, EmptyState, TeamLogo } from './components'
 import { Crest, Icon } from './icons'
 import { MatchBadge } from './LeagueScreen'
 
-export function PlayoffsTab({ league }: { league: League }) {
+export function PlayoffsTab({ league, embedded = false }: { league: League; embedded?: boolean }) {
   const { state, currentUser, startPlayoffs, endSeason } = useStore()
   const teams = state.teams.filter((t) => t.leagueId === league.id)
   const leagueMatches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
@@ -19,14 +19,17 @@ export function PlayoffsTab({ league }: { league: League }) {
   const official = teams.filter((t) => t.status === 'official')
   const regularDone = leagueMatches.filter((m) => m.stage !== 'playoff' && m.status !== 'official').length === 0
 
+  // Embedded (inside the Matches tab) skips the "no bracket yet" empty state —
+  // it only surfaces the commissioner's start action when the season is ready.
   return (
     <div>
-      {!started && (
+      {!started && (!embedded || isCommissioner) && (
         <>
-          <EmptyState icon="trophy">The bracket appears when the commissioner starts the playoffs.</EmptyState>
+          {!embedded && <EmptyState icon="trophy">The bracket appears when the commissioner starts the playoffs.</EmptyState>}
           {isCommissioner && (
             <>
-              {!regularDone && (
+              {embedded && official.length >= 2 && <h2>Playoffs</h2>}
+              {!regularDone && official.length >= 2 && (
                 <p className="faint" style={{ textAlign: 'center' }}>
                   {leagueMatches.filter((m) => m.stage !== 'playoff' && m.status !== 'official').length} matches still open — seeding uses the table as it stands.
                 </p>
@@ -72,7 +75,9 @@ export function PlayoffsTab({ league }: { league: League }) {
         </>
       )}
 
-      <Honors league={league} teams={teams} matches={leagueMatches} championTeamId={b?.championTeamId} />
+      {(started || !embedded) && (
+        <Honors league={league} teams={teams} matches={leagueMatches} championTeamId={b?.championTeamId} />
+      )}
     </div>
   )
 }

@@ -88,6 +88,7 @@ export const ROUTES = {
   createLeague: '/create-league',
   league: (id = ':leagueId') => `/league/${id}`,
   leagueSettings: (id = ':leagueId') => `/league/${id}/settings`,
+  leagueActivity: (id = ':leagueId') => `/league/${id}/activity`,
   createTeam: '/create-team',
   discover: '/discover',
   team: (id = ':teamId') => `/team/${id}`,
