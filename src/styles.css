@@ -57,7 +57,8 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 14px 18px 12px;
+  /* Pad past the iPhone status bar / notch (status bar is translucent). */
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 12px;
   position: sticky;
   top: 0;
   z-index: 30;

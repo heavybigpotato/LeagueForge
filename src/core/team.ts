@@ -188,6 +188,8 @@ export function enterLeague(
   team: Team,
   actorId: string,
   allTeams: Team[],
+  /** True once the commissioner has launched the current season (fixtures exist). */
+  seasonLaunched = false,
   now: number = Date.now(),
 ): { team: Team; audit: AuditEntry[] } {
   if (actorId !== team.captainId) throw new Error('Only the team captain can enter a league.')
@@ -195,6 +197,9 @@ export function enterLeague(
   if (team.leagueId !== null) throw new Error(`"${team.name}" already plays in another league. Leave it first.`)
   if (team.status !== 'official') {
     throw new Error(`Only official teams can enter a league — you need ${PLATFORM_MIN_PLAYERS} verified players first.`)
+  }
+  if (seasonLaunched) {
+    throw new Error(`${league.name} has already kicked off Season ${league.currentSeason}. You can enter next season.`)
   }
   const current = allTeams.filter((t) => t.leagueId === league.id)
   if (current.length >= league.maxTeams) throw new Error(`${league.name} is full (${league.maxTeams} teams).`)

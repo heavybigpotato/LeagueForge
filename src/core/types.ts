@@ -39,20 +39,10 @@ export function isVerifiedUser(u: User): boolean {
 
 export type LeaguePrivacy = 'public' | 'private' | 'invite-only'
 
-export type PlayoffFormat =
-  | 'none'
-  | 'single-elimination'
-  | 'double-elimination'
-  | 'best-of-series'
-
 export type ScheduleFormat =
   | 'round-robin'
+  /** Home and away against every team. */
   | 'double-round-robin'
-  /** Straight cup: the whole season is a single-elimination bracket. */
-  | 'knockout'
-  | 'swiss'
-  | 'ladder'
-  | 'groups'
 
 /** Frozen record of a completed season. */
 export interface SeasonRecord {
@@ -121,10 +111,11 @@ export interface League {
   minPlayersPerTeam: number
   maxPlayersPerTeam: number
   scheduleFormat: ScheduleFormat
-  playoffFormat: PlayoffFormat
   scoring: ScoringRules
   tieBreakers: TieBreaker[]
   privacy: LeaguePrivacy
+  /** Short code a captain enters to bring their team into this league. */
+  joinCode: string
   commissionerId: Id
   refereeIds: Id[]
   allowTransfers: boolean

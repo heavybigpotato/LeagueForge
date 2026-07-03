@@ -10,7 +10,6 @@ import { computeStandings, formGuide } from './standings'
 import { newInviteCode, inviteLink } from './ids'
 import { auditEntry } from './audit'
 import { evaluateSeasonAchievements } from './achievements'
-import { advancePlayoffs, bracket, bracketSize, playoffsStarted, startPlayoffs, winnerOf } from './playoffs'
 import { computeTeamStats } from './teamStats'
 import { postAnnouncement, setReferee, updateLeague } from './league'
 import { rescheduleMatch } from './match'
@@ -53,7 +52,6 @@ function makeLeague(commissioner: User, overrides: Partial<Parameters<typeof cre
     minPlayersPerTeam: 11,
     maxPlayersPerTeam: 25,
     scheduleFormat: 'round-robin',
-    playoffFormat: 'single-elimination',
     scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
     tieBreakers: ['goal-difference', 'goals-for', 'head-to-head'],
     privacy: 'public',
@@ -426,96 +424,36 @@ describe('audit log', () => {
   })
 })
 
-describe('playoffs', () => {
-  function officialize(m: Match, homeScore: number, awayScore: number): Match {
-    return { ...m, status: 'official', result: { homeScore, awayScore, verifiedAt: 1, verifiedBy: 'captains' } }
-  }
+describe('season launch and league join codes', () => {
+  it('mints a distinct join code for every league', () => {
+    const a = makeLeague(makeUser())
+    const b = makeLeague(makeUser())
+    expect(a.joinCode).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/)
+    expect(a.joinCode).not.toBe(b.joinCode)
+  })
 
-  function leagueWithFourTeams() {
-    const commissioner = makeUser()
-    const league = makeLeague(commissioner)
+  it('registration closes once the commissioner has launched the season', () => {
+    const league = makeLeague(makeUser())
     const teams: Team[] = []
-    for (const name of ['One', 'Two', 'Three', 'Four']) teams.push(buildOfficialTeam(league, name, teams).team)
-    // regular season: One > Two > Three > Four on points
-    const fixtures = generateRoundRobin(league, teams)
-    const rank = (id: string) => teams.findIndex((t) => t.id === id)
-    const season = fixtures.map((m) => {
-      const homeBetter = rank(m.homeTeamId) < rank(m.awayTeamId)
-      return officialize(m, homeBetter ? 2 : 0, homeBetter ? 0 : 2)
-    })
-    return { commissioner, league, teams, season }
-  }
+    for (const name of ['A', 'B']) teams.push(buildOfficialTeam(league, name, teams).team)
 
-  it('bracket size is the largest power of two that fits', () => {
-    expect(bracketSize(2)).toBe(2)
-    expect(bracketSize(3)).toBe(2)
-    expect(bracketSize(4)).toBe(4)
-    expect(bracketSize(7)).toBe(4)
-    expect(bracketSize(9)).toBe(8)
+    // A latecomer can enter while the season is unlaunched...
+    const late = buildFreeTeam('Latecomer', teams)
+    expect(enterLeague(league, late.team, late.captain.id, teams, false).team.leagueId).toBe(league.id)
+
+    // ...but not once fixtures have been drawn (season launched).
+    expect(() => enterLeague(league, late.team, late.captain.id, teams, true)).toThrow(/already kicked off/)
   })
 
-  it('only the commissioner can start playoffs, seeded 1v4 / 2v3, once', () => {
-    const { commissioner, league, teams, season } = leagueWithFourTeams()
-    expect(() => startPlayoffs(league, teams, season, teams[0].id)).toThrow(/commissioner/)
-
-    const started = startPlayoffs(league, teams, season, commissioner.id)
-    expect(started.matches).toHaveLength(2)
-    expect(started.matches.every((m) => m.stage === 'playoff' && m.playoffRound === 1)).toBe(true)
-    const semi1 = started.matches.find((m) => m.playoffSlot === 0)!
-    const semi2 = started.matches.find((m) => m.playoffSlot === 1)!
-    expect([semi1.homeTeamId, semi1.awayTeamId]).toEqual([teams[0].id, teams[3].id]) // 1 v 4
-    expect([semi2.homeTeamId, semi2.awayTeamId]).toEqual([teams[1].id, teams[2].id]) // 2 v 3
-    expect(started.audit[0].action).toBe('playoffs.started')
-
-    expect(() => startPlayoffs(league, teams, [...season, ...started.matches], commissioner.id)).toThrow(/already started/)
-  })
-
-  it('playoff matches never count toward standings and cannot end in a draw', () => {
-    const { commissioner, league, teams, season } = leagueWithFourTeams()
-    const { matches: semis } = startPlayoffs(league, teams, season, commissioner.id)
-    const before = computeStandings(league, teams, season)
-    const after = computeStandings(league, teams, [...season, officialize(semis[0], 3, 0)])
-    expect(after).toEqual(before)
-
-    const captain = state(teams[0])
-    expect(() => submitScore(league, semis[0], teams[0], captain, 1, 1)).toThrow(/cannot end in a draw/)
-
-    function state(team: Team): User {
-      return makeUser({ id: team.captainId, username: 'cap' })
-    }
-  })
-
-  it('winners auto-advance to the final and a champion is crowned', () => {
-    const { commissioner, league, teams, season } = leagueWithFourTeams()
-    const { matches: semis } = startPlayoffs(league, teams, season, commissioner.id)
-    let all = [...season, ...semis]
-
-    // nothing advances while the semis are undecided
-    expect(advancePlayoffs(league, all, commissioner.id).matches).toHaveLength(0)
-
-    const semi1 = semis.find((m) => m.playoffSlot === 0)!
-    const semi2 = semis.find((m) => m.playoffSlot === 1)!
-    all = all.map((m) => (m.id === semi1.id ? officialize(m, 2, 1) : m.id === semi2.id ? officialize(m, 0, 1) : m))
-
-    const adv = advancePlayoffs(league, all, commissioner.id)
-    expect(adv.matches).toHaveLength(1)
-    const final = adv.matches[0]
-    expect(final.playoffRound).toBe(2)
-    expect(final.homeTeamId).toBe(teams[0].id) // semi 1 winner (seed 1)
-    expect(final.awayTeamId).toBe(teams[2].id) // semi 2 winner (seed 3 upset)
-    expect(adv.championTeamId).toBeUndefined()
-
-    all = [...all, officialize(final, 1, 3)]
-    const done = advancePlayoffs(league, all, commissioner.id)
-    expect(done.matches).toHaveLength(0)
-    expect(done.championTeamId).toBe(teams[2].id)
-
-    const b = bracket(league.id, all)!
-    expect(b.roundNames).toEqual(['Semifinals', 'Final'])
-    expect(b.rounds[0]).toHaveLength(2)
-    expect(b.rounds[1]).toHaveLength(1)
-    expect(b.championTeamId).toBe(teams[2].id)
-    expect(winnerOf(all.find((m) => m.id === final.id))).toBe(teams[2].id)
+  it('league play allows draws (no playoff restriction)', () => {
+    const league = makeLeague(makeUser())
+    const home = buildOfficialTeam(league, 'Home', [])
+    const away = buildOfficialTeam(league, 'Away', [home.team])
+    const [match] = generateRoundRobin(league, [home.team, away.team])
+    const { match: pending } = submitScore(league, match, home.team, home.captain, 1, 1)
+    expect(pending.status).toBe('awaiting-confirmation')
+    const { match: official } = confirmScore(league, pending, away.team, away.captain)
+    expect(official.result).toMatchObject({ homeScore: 1, awayScore: 1 })
   })
 })
 
@@ -571,7 +509,7 @@ describe('seasons', () => {
     return { ...m, status: 'official', result: { homeScore: h, awayScore: a, verifiedAt: 1, verifiedBy: 'captains' } }
   }
 
-  it('archives the table and champion, unlocks rosters, and isolates the next season', () => {
+  it('crowns the table leader, archives the table, unlocks rosters, and isolates the next season', () => {
     const commissioner = makeUser()
     let league = makeLeague(commissioner)
     let teams: Team[] = []
@@ -581,41 +519,31 @@ describe('seasons', () => {
       const homeBetter = rank(m.homeTeamId) < rank(m.awayTeamId)
       return officialize(m, homeBetter ? 2 : 0, homeBetter ? 0 : 2)
     })
-
-    // playoffs decided: seed 3 wins its semi away, then upsets seed 1 in the final
-    const { matches: semis } = startPlayoffs(league, teams, season1, commissioner.id)
-    let all = [...season1, ...semis.map((m) => officialize(m, m.playoffSlot === 0 ? 2 : 0, m.playoffSlot === 0 ? 0 : 2))]
-    const adv = advancePlayoffs(league, all, commissioner.id)
-    all = [...all, officialize(adv.matches[0], 0, 1)]
-    const champId = advancePlayoffs(league, all, commissioner.id).championTeamId!
-    expect(champId).toBe(teams[2].id)
+    // One > Two > Three > Four, so team One tops the table and is champion.
+    const champId = teams[0].id
 
     // random members cannot end the season
-    expect(() => endSeason(league, teams, all, teams[0].id)).toThrow(/commissioner/)
+    expect(() => endSeason(league, teams, season1, teams[0].id)).toThrow(/commissioner/)
 
-    const ended = endSeason(league, teams, all, commissioner.id)
+    const ended = endSeason(league, teams, season1, commissioner.id)
     league = ended.league
     teams = ended.teams
     expect(league.currentSeason).toBe(2)
     expect(league.seasons).toHaveLength(1)
     expect(league.seasons[0].championTeamId).toBe(champId)
-    expect(league.seasons[0].tableLeaderTeamId).toBe(teams[0].id)
+    expect(league.seasons[0].tableLeaderTeamId).toBe(champId)
     expect(league.seasons[0].table[0].points).toBe(9)
     expect(teams.every((t) => !t.rosterLocked)).toBe(true)
     expect(ended.audit[0].action).toBe('season.ended')
 
-    // season 2 starts clean: standings empty, playoffs can run again
-    expect(computeStandings(league, teams, all).every((r) => r.played === 0)).toBe(true)
-    expect(playoffsStarted(league.id, all, league.currentSeason)).toBe(false)
+    // season 2 starts clean: standings empty, ready to launch again
+    expect(computeStandings(league, teams, season1).every((r) => r.played === 0)).toBe(true)
     const season2 = generateRoundRobin(league, teams)
     expect(season2.every((m) => m.season === 2)).toBe(true)
-    const withNew = [...all, officialize(season2[0], 1, 0)]
+    const withNew = [...season1, officialize(season2[0], 1, 0)]
     const table2 = computeStandings(league, teams, withNew)
     expect(table2.reduce((s, r) => s + r.played, 0)).toBe(2) // only the season-2 result
-    expect(currentSeasonMatches(league, withNew)).toHaveLength(season2.length ? 1 : 0)
-
-    // history still reads season 1's bracket
-    expect(bracket(league.id, all, 1)?.championTeamId).toBe(champId)
+    expect(currentSeasonMatches(league, withNew)).toHaveLength(1)
   })
 
   it('refuses to archive an empty season', () => {
@@ -624,28 +552,6 @@ describe('seasons', () => {
     const teams: Team[] = []
     for (const name of ['A', 'B']) teams.push(buildOfficialTeam(league, name, teams).team)
     expect(() => endSeason(league, teams, [], commissioner.id)).toThrow(/Nothing to archive/)
-  })
-})
-
-describe('knockout cup format', () => {
-  it('the whole season can be a bracket: seeded, no draws, champion crowned', () => {
-    const commissioner = makeUser()
-    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
-    const teams: Team[] = []
-    for (const name of ['C1', 'C2', 'C3', 'C4']) teams.push(buildOfficialTeam(league, name, teams).team)
-
-    // drawing the cup = starting the bracket with no regular season
-    const { matches: round1 } = startPlayoffs(league, teams, [], commissioner.id)
-    expect(round1).toHaveLength(2)
-    expect(round1.every((m) => m.stage === 'playoff' && m.season === 1)).toBe(true)
-
-    const decided = round1.map((m) => ({ ...m, status: 'official' as const, result: { homeScore: 1, awayScore: 0, verifiedAt: 1, verifiedBy: 'captains' as const } }))
-    const adv = advancePlayoffs(league, decided, commissioner.id)
-    expect(adv.matches).toHaveLength(1)
-    const final = { ...adv.matches[0], status: 'official' as const, result: { homeScore: 2, awayScore: 1, verifiedAt: 1, verifiedBy: 'captains' as const } }
-    expect(advancePlayoffs(league, [...decided, final], commissioner.id).championTeamId).toBe(final.homeTeamId)
-    // and the standings stay untouched — a cup has no table
-    expect(computeStandings(league, teams, [...decided, final]).every((r) => r.played === 0)).toBe(true)
   })
 })
 

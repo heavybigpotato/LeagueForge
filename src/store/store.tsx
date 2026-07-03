@@ -5,8 +5,7 @@ import { approvePlayer, createTeam, enterLeague, leaveLeague, officialTeams, req
 import { PLATFORM_MIN_PLAYERS } from '../core/types'
 import { generateRoundRobin } from '../core/schedule'
 import { addEvidence, checkIn, confirmScore, disputeScore, rescheduleMatch, resolveDispute, rsvp, submitScore } from '../core/match'
-import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
-import { endSeason } from '../core/seasons'
+import { currentSeasonMatches, endSeason } from '../core/seasons'
 import { auditEntry } from '../core/audit'
 import { checkPassword, createAccount, newVerification, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
 import { clearState, emptyAppState, loadState, saveState } from './persistence'
@@ -104,16 +103,18 @@ export interface StoreApi {
   dismiss(id: number): void
   createLeague(input: CreateLeagueInput): League | undefined
   createTeam(input: { name: string; logo: string; primaryColor: string; secondaryColor: string; bio: string }): Team | undefined
-  /** Captain enters their official team into a league. */
+  /** Captain enters their official team into a league (before it kicks off). */
   enterLeague(teamId: string, leagueId: string): boolean
+  /** Captain enters their team into a league using the league's join code. */
+  enterLeagueByCode(teamId: string, code: string): boolean
   /** Captain (or commissioner) withdraws a team — between seasons only. */
   leaveLeague(teamId: string): void
   /** Commissioner deletes the league; its teams live on as free agents. */
   deleteLeague(leagueId: string): boolean
   joinByCode(code: string): Team | undefined
   approvePlayer(teamId: string, playerId: string): void
-  generateSchedule(leagueId: string): void
-  startPlayoffs(leagueId: string): void
+  /** Commissioner kicks off the season: generates fixtures and closes entry. */
+  launchSeason(leagueId: string): void
   submitScore(matchId: string, homeScore: number, awayScore: number): void
   confirmScore(matchId: string): void
   disputeScore(matchId: string, reason: string): void
@@ -155,38 +156,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       auditLog: [...state.auditLog, ...audit],
     })
 
-    /**
-     * After a result becomes official, move the bracket along: create any
-     * next-round ties whose pairings are now decided, and crown the champion
-     * once the final is verified.
-     */
-    const withPlayoffProgress = (next: AppState, leagueId: string): { state: AppState; message?: string } => {
-      const league = next.leagues.find((l) => l.id === leagueId)
-      if (!league) return { state: next }
-      const adv = advancePlayoffs(league, next.matches, currentUser.id)
-      let matches = next.matches
-      let auditLog = next.auditLog
-      let message: string | undefined
-      if (adv.matches.length > 0) {
-        matches = [...matches, ...adv.matches]
-        auditLog = [...auditLog, ...adv.audit]
-        message = 'Bracket updated — the next playoff round is set.'
-      }
-      // one crowning per season: champions ≤ archived seasons means this
-      // season's champion hasn't been announced yet
-      const crownings = auditLog.filter((a) => a.leagueId === leagueId && a.action === 'playoffs.champion').length
-      const seasonsEnded = auditLog.filter((a) => a.leagueId === leagueId && a.action === 'season.ended').length
-      const alreadyCrowned = crownings > seasonsEnded
-      if (adv.championTeamId && !alreadyCrowned) {
-        const champ = next.teams.find((t) => t.id === adv.championTeamId)
-        auditLog = [
-          ...auditLog,
-          auditEntry(leagueId, currentUser.id, 'playoffs.champion', `🏆 "${champ?.name}" won the final and are the ${league.name} champions.`),
-        ]
-        message = `🏆 ${champ?.name} are the champions of ${league.name}!`
-      }
-      return { state: { ...next, matches, auditLog }, message }
-    }
+    // True once the commissioner has kicked off the current season — i.e. the
+    // season has fixtures. Registration closes at that point.
+    const seasonLaunched = (league: League) => currentSeasonMatches(league, state.matches).length > 0
 
     return {
       state,
@@ -407,7 +379,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const team = state.teams.find((t) => t.id === teamId)
           if (!team) throw new Error('Team not found.')
           const league = leagueOf(leagueId)
-          const { team: next, audit } = enterLeague(league, team, currentUser.id, state.teams)
+          const { team: next, audit } = enterLeague(league, team, currentUser.id, state.teams, seasonLaunched(league))
+          commit(
+            { ...state, teams: state.teams.map((t) => (t.id === next.id ? next : t)), auditLog: [...state.auditLog, ...audit] },
+            `"${team.name}" entered ${league.name}. See you on the schedule.`,
+          )
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      enterLeagueByCode: (teamId, code) => {
+        try {
+          const team = state.teams.find((t) => t.id === teamId)
+          if (!team) throw new Error('Team not found.')
+          const clean = code.trim().toUpperCase()
+          const league = state.leagues.find((l) => l.joinCode.toUpperCase() === clean)
+          if (!league) throw new Error('No league found for that code.')
+          const { team: next, audit } = enterLeague(league, team, currentUser.id, state.teams, seasonLaunched(league))
           commit(
             { ...state, teams: state.teams.map((t) => (t.id === next.id ? next : t)), auditLog: [...state.auditLog, ...audit] },
             `"${team.name}" entered ${league.name}. See you on the schedule.`,
@@ -497,49 +488,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
 
-      generateSchedule: (leagueId) => {
+      launchSeason: (leagueId) => {
         try {
           const league = leagueOf(leagueId)
-          if (currentUser.id !== league.commissionerId) throw new Error('Only the commissioner can generate the schedule.')
+          if (currentUser.id !== league.commissionerId) throw new Error('Only the commissioner can launch the season.')
           const eligible = officialTeams(state.teams, leagueId)
-          if (eligible.length < 2) throw new Error('At least 2 official teams are required to generate fixtures.')
-
-          if (league.scheduleFormat === 'knockout') {
-            // Cup format: the season IS the bracket.
-            const started = startPlayoffs(league, state.teams, state.matches, currentUser.id)
-            commit(
-              { ...state, matches: [...state.matches, ...started.matches], auditLog: [...state.auditLog, ...started.audit] },
-              `Cup drawn: ${started.matches.length * 2} teams enter the knockout bracket.`,
-            )
-            return
-          }
+          if (eligible.length < 2) throw new Error('You need at least 2 official teams to kick off the season.')
 
           const fixtures = generateRoundRobin(league, eligible, { double: league.scheduleFormat === 'double-round-robin' })
+          // Replace any unplayed fixtures from this season; keep verified results.
           const withoutOld = state.matches.filter(
             (m) =>
               !(
                 m.leagueId === leagueId &&
                 m.status === 'scheduled' &&
-                m.stage !== 'playoff' &&
                 (m.season ?? 1) === league.currentSeason
               ),
           )
+          const relaunch = currentSeasonMatches(league, state.matches).length > 0
           commit(
-            { ...state, matches: [...withoutOld, ...fixtures] },
-            `Season ${league.currentSeason} schedule generated: ${fixtures.length} fixtures for ${eligible.length} official teams.`,
-          )
-        } catch (e) {
-          fail(e)
-        }
-      },
-
-      startPlayoffs: (leagueId) => {
-        try {
-          const league = leagueOf(leagueId)
-          const started = startPlayoffs(league, state.teams, state.matches, currentUser.id)
-          commit(
-            { ...state, matches: [...state.matches, ...started.matches], auditLog: [...state.auditLog, ...started.audit] },
-            `Playoffs are live — ${started.matches.length * 2} teams seeded into the bracket from the standings.`,
+            {
+              ...state,
+              matches: [...withoutOld, ...fixtures],
+              auditLog: [
+                ...state.auditLog,
+                auditEntry(leagueId, currentUser.id, 'schedule.generated', `Season ${league.currentSeason} kicked off — ${fixtures.length} fixtures drawn for ${eligible.length} teams.`),
+              ],
+            },
+            relaunch
+              ? `Fixtures redrawn — ${fixtures.length} to play.`
+              : `Season ${league.currentSeason} is live! ${fixtures.length} fixtures for ${eligible.length} teams.`,
           )
         } catch (e) {
           fail(e)
@@ -565,14 +543,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { match, league } = matchCtx(matchId)
           const team = opposingTeamFor(state, match, currentUser.id)
           const event = confirmScore(league, match, team, currentUser)
-          const progressed = withPlayoffProgress(replaceMatch(event.match, event.audit), league.id)
-          commit(
-            progressed.state,
-            progressed.message ??
-              (match.stage === 'playoff'
-                ? 'Result confirmed — the playoff result is official.'
-                : 'Result confirmed — the match is official and standings have updated.'),
-          )
+          commit(replaceMatch(event.match, event.audit), 'Result confirmed — the match is official and standings have updated.')
         } catch (e) {
           fail(e)
         }
@@ -593,8 +564,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const { match, league } = matchCtx(matchId)
           const event = resolveDispute(league, match, currentUser, homeScore, awayScore)
-          const progressed = withPlayoffProgress(replaceMatch(event.match, event.audit), league.id)
-          commit(progressed.state, progressed.message ?? 'Dispute resolved — the result is official.')
+          commit(replaceMatch(event.match, event.audit), 'Dispute resolved — the result is official.')
         } catch (e) {
           fail(e)
         }

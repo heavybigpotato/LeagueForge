@@ -71,9 +71,6 @@ export function checkInvariants(s: StateSnapshot): Violation[] {
     if (m.status !== 'official' && m.result) {
       v.push({ rule: 'result-without-verification', detail: `Match ${m.id} carries a result but was never verified.` })
     }
-    if (m.stage === 'playoff' && m.result && m.result.homeScore === m.result.awayScore) {
-      v.push({ rule: 'playoff-draw', detail: `Playoff match ${m.id} ended in a draw — not allowed.` })
-    }
   }
 
   // ---- roster integrity (league bounds when in a league, platform bounds when free)
