@@ -1,5 +1,6 @@
-import type { AuditEntry, League, Team, User } from './types'
+import type { AuditEntry, League, Match, Team, User } from './types'
 import { PLATFORM_MIN_PLAYERS, isVerifiedUser } from './types'
+import { LIMITS } from './config'
 import { auditEntry } from './audit'
 import { newId, newInviteCode } from './ids'
 
@@ -11,12 +12,12 @@ export interface TeamEvent {
 }
 
 /**
- * Create a Pending Team. The team is NOT part of the league: it cannot play
- * matches, be scheduled, or appear in standings until it reaches the league's
- * minimum roster size and becomes official.
+ * Teams are first-class: anyone can found one, no league required. The team
+ * lives on its own — build the roster, go official at the platform minimum,
+ * then enter a league (and leave it again between seasons). Leagues come
+ * and go; the team keeps its name, colors, and roster.
  */
-export function createPendingTeam(
-  league: League,
+export function createTeam(
   captain: User,
   input: { name: string; logo: string; primaryColor: string; secondaryColor: string; bio: string },
   existingTeams: Team[],
@@ -25,16 +26,15 @@ export function createPendingTeam(
   if (!isVerifiedUser(captain)) {
     throw new Error('Captain must have a verified email and phone number.')
   }
-  assertNotInLeague(captain.id, league, existingTeams)
   const name = input.name.trim()
   if (!name) throw new Error('Team name is required.')
-  if (existingTeams.some((t) => t.leagueId === league.id && t.name.toLowerCase() === name.toLowerCase())) {
-    throw new Error('A team with this name already exists in the league.')
+  if (existingTeams.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+    throw new Error('A team with this name already exists.')
   }
 
   const team: Team = {
     id: newId('team'),
-    leagueId: league.id,
+    leagueId: null,
     name,
     logo: input.logo,
     primaryColor: input.primaryColor,
@@ -48,13 +48,15 @@ export function createPendingTeam(
     rosterLocked: false,
     createdAt: now,
   }
-  return {
-    team,
-    audit: [
-      auditEntry(league.id, captain.id, 'team.created', `Pending team "${team.name}" created by @${captain.username}.`, now),
-    ],
-    activated: false,
-  }
+  // No league yet, so nothing to audit — league logs record league activity.
+  return { team, audit: [], activated: false }
+}
+
+/** Roster size floor/cap for a team, from its league or the platform defaults. */
+export function rosterBounds(league: League | null): { min: number; max: number } {
+  return league
+    ? { min: league.minPlayersPerTeam, max: league.maxPlayersPerTeam }
+    : { min: PLATFORM_MIN_PLAYERS, max: LIMITS.maxRoster }
 }
 
 function assertNotInLeague(userId: string, league: League, teams: Team[]) {
@@ -73,7 +75,7 @@ function assertNotInLeague(userId: string, league: League, teams: Team[]) {
  * approval queue — joining never adds someone straight to the roster.
  */
 export function requestJoin(
-  league: League,
+  league: League | null,
   team: Team,
   player: User,
   allTeams: Team[],
@@ -82,28 +84,31 @@ export function requestJoin(
   if (!isVerifiedUser(player)) {
     throw new Error('Players must verify their email and phone number before joining a team.')
   }
-  assertNotInLeague(player.id, league, allTeams)
+  if (league) assertNotInLeague(player.id, league, allTeams)
+  if (team.memberIds.includes(player.id) || team.pendingMemberIds.includes(player.id)) {
+    throw new Error('You are already on this team.')
+  }
   if (team.rosterLocked) throw new Error('The roster is locked for the season.')
-  if (team.memberIds.length + team.pendingMemberIds.length >= league.maxPlayersPerTeam) {
-    throw new Error(`The roster is full (maximum ${league.maxPlayersPerTeam} players).`)
+  const { max } = rosterBounds(league)
+  if (team.memberIds.length + team.pendingMemberIds.length >= max) {
+    throw new Error(`The roster is full (maximum ${max} players).`)
   }
   return {
     team: { ...team, pendingMemberIds: [...team.pendingMemberIds, player.id] },
-    audit: [
-      auditEntry(league.id, player.id, 'team.player-joined', `@${player.username} joined "${team.name}" via invite and awaits captain approval.`, now),
-    ],
+    audit: league
+      ? [auditEntry(league.id, player.id, 'team.player-joined', `@${player.username} joined "${team.name}" via invite and awaits captain approval.`, now)]
+      : [],
     activated: false,
   }
 }
 
 /**
- * Captain approves a pending player. If approval brings the roster to the
- * league minimum, the team is automatically activated: it becomes an
- * Official Team, enters the league, and its roster locks for the season
- * (unless the league allows transfers).
+ * Captain approves a pending player. When approval brings the roster to the
+ * required minimum — the league's if the team plays in one, the platform
+ * floor otherwise — the team automatically becomes an Official Team.
  */
 export function approvePlayer(
-  league: League,
+  league: League | null,
   team: Team,
   approverId: string,
   player: User,
@@ -111,8 +116,9 @@ export function approvePlayer(
 ): TeamEvent {
   if (approverId !== team.captainId) throw new Error('Only the team captain can approve players.')
   if (!team.pendingMemberIds.includes(player.id)) throw new Error('This player has no pending request.')
-  if (team.memberIds.length >= league.maxPlayersPerTeam) {
-    throw new Error(`The roster is full (maximum ${league.maxPlayersPerTeam} players).`)
+  const { min, max } = rosterBounds(league)
+  if (team.memberIds.length >= max) {
+    throw new Error(`The roster is full (maximum ${max} players).`)
   }
 
   let next: Team = {
@@ -120,51 +126,128 @@ export function approvePlayer(
     memberIds: [...team.memberIds, player.id],
     pendingMemberIds: team.pendingMemberIds.filter((id) => id !== player.id),
   }
-  const audit = [
-    auditEntry(league.id, approverId, 'team.player-approved', `@${player.username} approved onto "${team.name}" (${next.memberIds.length}/${league.minPlayersPerTeam} required).`, now),
-  ]
+  const audit = league
+    ? [auditEntry(league.id, approverId, 'team.player-approved', `@${player.username} approved onto "${team.name}" (${next.memberIds.length}/${min} required).`, now)]
+    : []
 
   let activated = false
-  if (next.status === 'pending' && next.memberIds.length >= league.minPlayersPerTeam) {
+  if (next.status === 'pending' && next.memberIds.length >= min) {
     next = {
       ...next,
       status: 'official',
       activatedAt: now,
-      rosterLocked: !league.allowTransfers,
+      // Rosters only lock as league policy; a free team keeps recruiting.
+      rosterLocked: league ? !league.allowTransfers : false,
     }
     activated = true
-    audit.push(
-      auditEntry(league.id, approverId, 'team.activated', `"${team.name}" reached ${league.minPlayersPerTeam} verified players and is now officially registered in the league.`, now),
-    )
+    if (league) {
+      audit.push(
+        auditEntry(league.id, approverId, 'team.activated', `"${team.name}" reached ${min} verified players and is now officially registered in the league.`, now),
+      )
+    }
   }
   return { team: next, audit, activated }
 }
 
 /**
- * Remove a player. An official team can never drop below the league minimum —
+ * Remove a player. An official team can never drop below its minimum —
  * the platform blocks the removal instead of letting the team fall out of
- * compliance mid-season.
+ * compliance.
  */
 export function removePlayer(
-  league: League,
+  league: League | null,
   team: Team,
   removerId: string,
   playerId: string,
   now: number = Date.now(),
 ): TeamEvent {
-  const isCommissioner = removerId === league.commissionerId
+  const isCommissioner = league !== null && removerId === league.commissionerId
   if (removerId !== team.captainId && !isCommissioner) {
     throw new Error('Only the captain or the commissioner can remove players.')
   }
   if (playerId === team.captainId) throw new Error('The captain cannot be removed from the team.')
   if (!team.memberIds.includes(playerId)) throw new Error('This player is not on the roster.')
-  if (team.status === 'official' && team.memberIds.length - 1 < league.minPlayersPerTeam) {
-    throw new Error(`Cannot remove: an official team must keep at least ${league.minPlayersPerTeam} players.`)
+  const { min } = rosterBounds(league)
+  if (team.status === 'official' && team.memberIds.length - 1 < min) {
+    throw new Error(`Cannot remove: an official team must keep at least ${min} players.`)
   }
   return {
     team: { ...team, memberIds: team.memberIds.filter((id) => id !== playerId) },
-    audit: [auditEntry(league.id, removerId, 'team.player-removed', `Player removed from "${team.name}".`, now)],
+    audit: league ? [auditEntry(league.id, removerId, 'team.player-removed', `Player removed from "${team.name}".`, now)] : [],
     activated: false,
+  }
+}
+
+/**
+ * The captain enters their official team into a league. The league sets the
+ * bar — capacity, roster size, no player on two teams — and the roster locks
+ * for the season if the league doesn't allow transfers.
+ */
+export function enterLeague(
+  league: League,
+  team: Team,
+  actorId: string,
+  allTeams: Team[],
+  now: number = Date.now(),
+): { team: Team; audit: AuditEntry[] } {
+  if (actorId !== team.captainId) throw new Error('Only the team captain can enter a league.')
+  if (team.leagueId === league.id) throw new Error(`"${team.name}" is already in this league.`)
+  if (team.leagueId !== null) throw new Error(`"${team.name}" already plays in another league. Leave it first.`)
+  if (team.status !== 'official') {
+    throw new Error(`Only official teams can enter a league — you need ${PLATFORM_MIN_PLAYERS} verified players first.`)
+  }
+  const current = allTeams.filter((t) => t.leagueId === league.id)
+  if (current.length >= league.maxTeams) throw new Error(`${league.name} is full (${league.maxTeams} teams).`)
+  if (current.some((t) => t.name.toLowerCase() === team.name.toLowerCase())) {
+    throw new Error('A team with this name already plays in this league.')
+  }
+  if (team.memberIds.length < league.minPlayersPerTeam) {
+    throw new Error(`${league.name} requires at least ${league.minPlayersPerTeam} players — you have ${team.memberIds.length}.`)
+  }
+  if (team.memberIds.length > league.maxPlayersPerTeam) {
+    throw new Error(`${league.name} allows at most ${league.maxPlayersPerTeam} players — you have ${team.memberIds.length}.`)
+  }
+  for (const t of current) {
+    if (team.memberIds.some((id) => t.memberIds.includes(id))) {
+      throw new Error(`Someone on your roster is already on "${t.name}" in this league.`)
+    }
+  }
+  return {
+    team: { ...team, leagueId: league.id, rosterLocked: !league.allowTransfers },
+    audit: [
+      auditEntry(league.id, actorId, 'team.entered-league', `"${team.name}" entered ${league.name} with ${team.memberIds.length} verified players.`, now),
+    ],
+  }
+}
+
+/**
+ * Leave a league — between seasons only. A team with fixtures in the current
+ * season stays until the commissioner archives it; nothing ever falls out of
+ * a live schedule.
+ */
+export function leaveLeague(
+  league: League,
+  team: Team,
+  actorId: string,
+  matches: Match[],
+  now: number = Date.now(),
+): { team: Team; audit: AuditEntry[] } {
+  if (actorId !== team.captainId && actorId !== league.commissionerId) {
+    throw new Error('Only the team captain or the commissioner can withdraw a team.')
+  }
+  if (team.leagueId !== league.id) throw new Error(`"${team.name}" is not in this league.`)
+  const hasFixtures = matches.some(
+    (m) =>
+      m.leagueId === league.id &&
+      (m.season ?? 1) === league.currentSeason &&
+      (m.homeTeamId === team.id || m.awayTeamId === team.id),
+  )
+  if (hasFixtures) {
+    throw new Error(`"${team.name}" has fixtures in Season ${league.currentSeason}. Teams can leave between seasons.`)
+  }
+  return {
+    team: { ...team, leagueId: null, rosterLocked: false },
+    audit: [auditEntry(league.id, actorId, 'team.left-league', `"${team.name}" left ${league.name}.`, now)],
   }
 }
 

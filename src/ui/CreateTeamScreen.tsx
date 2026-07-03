@@ -1,28 +1,26 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/store'
+import { PLATFORM_MIN_PLAYERS } from '../core/types'
+import { ROUTES } from '../core/config'
 import { Crest, Icon } from './icons'
 import type { Team } from '../core/types'
 
 export function CreateTeamScreen() {
-  const { leagueId } = useParams()
   const store = useStore()
   const navigate = useNavigate()
-  const league = store.state.leagues.find((l) => l.id === leagueId)
   const [form, setForm] = useState({ name: '', logo: '', primaryColor: '#c9f542', secondaryColor: '#14171c', bio: '' })
   const set = <K extends keyof typeof form>(k: K, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
-  if (!league) return <p className="muted">League not found.</p>
-
   const submit = () => {
-    const team = store.createTeam(league.id, form)
+    const team = store.createTeam(form)
     if (team) navigate(`/team/${team.id}`)
   }
 
   // Live crest preview built from the form values.
   const preview: Team = {
     id: 'preview',
-    leagueId: league.id,
+    leagueId: null,
     name: form.name || 'Your Team',
     logo: '',
     primaryColor: form.primaryColor,
@@ -39,11 +37,11 @@ export function CreateTeamScreen() {
 
   return (
     <div>
-      <Link to={`/league/${league.id}`} className="backlink"><Icon name="arrowLeft" size={15} /> {league.name}</Link>
+      <Link to={ROUTES.home} className="backlink"><Icon name="arrowLeft" size={15} /> Back</Link>
       <div className="kicker" style={{ marginTop: 10 }}>New team</div>
       <h1>Create a Team</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        You&rsquo;re the captain. The team goes official at {league.minPlayersPerTeam} verified players.
+        You&rsquo;re the captain. Official at {PLATFORM_MIN_PLAYERS} verified players — then pick your league.
       </p>
 
       <div className="card">
@@ -72,9 +70,9 @@ export function CreateTeamScreen() {
       </div>
       <label className="field">
         <span>Bio</span>
-        <textarea rows={2} value={form.bio} onChange={(e) => set('bio', e.target.value)} placeholder="Tell the league who you are…" />
+        <textarea rows={2} value={form.bio} onChange={(e) => set('bio', e.target.value)} placeholder="Tell everyone who you are…" />
       </label>
-      <button className="btn primary" onClick={submit}>Create Pending Team</button>
+      <button className="btn primary" onClick={submit}>Create Team</button>
     </div>
   )
 }

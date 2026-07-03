@@ -74,6 +74,9 @@ const MIGRATIONS: Record<number, Migration> = {
     }
     return { ...state, verifications: upgraded }
   },
+  // v7 → v8: teams became independent of leagues (leagueId may now be null).
+  // Existing teams keep the league they were created in — no data changes.
+  7: (state) => state,
 }
 
 export function migrate(state: Record<string, unknown>, fromVersion: number): Record<string, unknown> | null {

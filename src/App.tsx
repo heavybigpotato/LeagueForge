@@ -13,6 +13,7 @@ import { TeamScreen } from './ui/TeamScreen'
 import { MatchScreen } from './ui/MatchScreen'
 import { LiveScoreboardScreen } from './ui/LiveScoreboardScreen'
 import { JoinScreen } from './ui/JoinScreen'
+import { DiscoverScreen } from './ui/DiscoverScreen'
 import { ProfileScreen } from './ui/ProfileScreen'
 import { DataCenterScreen } from './ui/DataCenterScreen'
 import { ROUTES } from './core/config'
@@ -43,7 +44,8 @@ function MainApp() {
               <Route path="/create-league" element={<CreateLeagueScreen />} />
               <Route path="/league/:leagueId" element={<LeagueScreen />} />
               <Route path="/league/:leagueId/settings" element={<LeagueSettingsScreen />} />
-              <Route path="/league/:leagueId/create-team" element={<CreateTeamScreen />} />
+              <Route path="/create-team" element={<CreateTeamScreen />} />
+              <Route path="/discover" element={<DiscoverScreen />} />
               <Route path="/team/:teamId" element={<TeamScreen />} />
               <Route path="/match/:matchId" element={<MatchScreen />} />
               <Route path="/match/:matchId/live" element={<LiveScoreboardScreen />} />
@@ -58,6 +60,10 @@ function MainApp() {
             <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
               <Icon name="home" size={20} />
               Home
+            </NavLink>
+            <NavLink to="/discover" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <Icon name="compass" size={20} />
+              Discover
             </NavLink>
             <NavLink to="/join" className={({ isActive }) => (isActive ? 'active' : '')}>
               <Icon name="ticket" size={20} />

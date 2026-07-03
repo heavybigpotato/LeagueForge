@@ -144,7 +144,8 @@ export type TeamStatus = 'pending' | 'official'
 
 export interface Team {
   id: Id
-  leagueId: Id
+  /** League the team currently plays in. Null: a free agent between leagues. */
+  leagueId: Id | null
   name: string
   logo: string
   primaryColor: string
@@ -247,6 +248,8 @@ export type AuditAction =
   | 'season.ended'
   | 'match.rescheduled'
   | 'team.created'
+  | 'team.entered-league'
+  | 'team.left-league'
   | 'team.player-joined'
   | 'team.player-approved'
   | 'team.player-removed'

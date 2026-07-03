@@ -4,6 +4,8 @@ import { inviteLink } from '../core/ids'
 import { computeTeamStats } from '../core/teamStats'
 import { formGuide } from '../core/standings'
 import { bracket } from '../core/playoffs'
+import { rosterBounds } from '../core/team'
+import { ROUTES } from '../core/config'
 import type { Team } from '../core/types'
 import { Avatar, Badge, EmptyState, FormPills, RosterProgress, TeamLogo, VerificationChecks } from './components'
 import { Icon } from './icons'
@@ -11,13 +13,22 @@ import { InviteQR } from './InviteQR'
 
 export function TeamScreen() {
   const { teamId } = useParams()
-  const { state, currentUser, approvePlayer } = useStore()
+  const { state, currentUser, approvePlayer, leaveLeague } = useStore()
 
   const team = state.teams.find((t) => t.id === teamId)
   if (!team) return <EmptyState icon="alert">Team not found.</EmptyState>
-  const league = state.leagues.find((l) => l.id === team.leagueId)!
+  const league = state.leagues.find((l) => l.id === team.leagueId) ?? null
+  const bounds = rosterBounds(league)
   const isCaptain = currentUser.id === team.captainId
   const userOf = (id: string) => state.users.find((u) => u.id === id)
+  const hasFixturesThisSeason =
+    league !== null &&
+    state.matches.some(
+      (m) =>
+        m.leagueId === league.id &&
+        (m.season ?? 1) === league.currentSeason &&
+        (m.homeTeamId === team.id || m.awayTeamId === team.id),
+    )
   const championships = state.leagues.reduce(
     (count, l) =>
       count +
@@ -28,7 +39,11 @@ export function TeamScreen() {
 
   return (
     <div>
-      <Link to={`/league/${league.id}`} className="backlink"><Icon name="arrowLeft" size={15} /> {league.name}</Link>
+      {league ? (
+        <Link to={`/league/${league.id}`} className="backlink"><Icon name="arrowLeft" size={15} /> {league.name}</Link>
+      ) : (
+        <Link to={ROUTES.home} className="backlink"><Icon name="arrowLeft" size={15} /> Home</Link>
+      )}
 
       <div className="hero">
         <div
@@ -43,6 +58,7 @@ export function TeamScreen() {
               <Badge kind={team.status === 'official' ? 'official' : 'pending'}>
                 {team.status === 'official' ? 'Official Team' : 'Pending'}
               </Badge>
+              {!league && team.status === 'official' && <Badge kind="awaiting">Free agent</Badge>}
               {championships > 0 && <Badge kind="pending">🏆 Champions{championships > 1 ? ` ×${championships}` : ''}</Badge>}
               {team.rosterLocked && <Badge kind="neutral"><Icon name="lock" size={10} /> Roster locked</Badge>}
             </div>
@@ -62,20 +78,48 @@ export function TeamScreen() {
             <span style={{ color: 'var(--volt)' }}><Icon name="gauge" size={17} /></span>
             <strong>Road to activation</strong>
           </div>
-          <RosterProgress current={team.memberIds.length} required={league.minPlayersPerTeam} />
+          <RosterProgress current={team.memberIds.length} required={bounds.min} />
           <p className="faint" style={{ marginBottom: 0 }}>
-            Registration is automatic at {league.minPlayersPerTeam} verified players. Until then: no fixtures, no standings.
+            Official at {bounds.min} verified players — automatic, no paperwork.
           </p>
+        </div>
+      ) : league ? (
+        <div className="card">
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--green)' }}><Icon name="shieldCheck" size={17} /></span>
+            <div className="grow">
+              <strong>Playing in <Link to={`/league/${league.id}`} style={{ color: 'var(--volt)' }}>{league.name}</Link></strong>
+              <div className="faint">
+                Official since {team.activatedAt ? new Date(team.activatedAt).toLocaleDateString() : 'activation'} · Season {league.currentSeason}
+              </div>
+            </div>
+          </div>
+          {isCaptain && !hasFixturesThisSeason && (
+            <button
+              className="btn small danger"
+              style={{ marginTop: 12 }}
+              onClick={() => {
+                if (window.confirm(`Leave ${league.name}? The team stays together and can join another league.`)) leaveLeague(team.id)
+              }}
+            >
+              Leave league
+            </button>
+          )}
         </div>
       ) : (
         <div className="card">
           <div className="row" style={{ gap: 8 }}>
-            <span style={{ color: 'var(--green)' }}><Icon name="shieldCheck" size={17} /></span>
-            <strong>Officially registered</strong>
+            <span style={{ color: 'var(--volt)' }}><Icon name="trophy" size={17} /></span>
+            <div className="grow">
+              <strong>Ready for a league</strong>
+              <div className="faint">{team.memberIds.length} verified players, no competition yet.</div>
+            </div>
           </div>
-          <p className="faint" style={{ marginBottom: 0 }}>
-            Since {team.activatedAt ? new Date(team.activatedAt).toLocaleDateString() : 'activation'} — in the league, on the schedule.
-          </p>
+          {isCaptain && (
+            <Link to={ROUTES.discover} className="btn primary" style={{ textDecoration: 'none', marginTop: 12 }}>
+              <Icon name="compass" size={16} /> Find a league
+            </Link>
+          )}
         </div>
       )}
 
@@ -124,7 +168,7 @@ export function TeamScreen() {
       )}
 
       <h2>
-        Roster · {team.memberIds.length}/{league.maxPlayersPerTeam} <span style={{ color: 'var(--faint)' }}>(min {league.minPlayersPerTeam})</span>
+        Roster · {team.memberIds.length}/{bounds.max} <span style={{ color: 'var(--faint)' }}>(min {bounds.min})</span>
       </h2>
       <div className="card">
         {team.memberIds.map((id) => {
