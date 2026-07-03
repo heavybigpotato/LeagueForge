@@ -784,6 +784,19 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
 .auth-import .btn { width: auto; border: none; background: none; color: var(--muted); font-size: 13px; padding: 6px 4px; }
 .auth-import .card { position: absolute; left: 18px; right: 18px; bottom: 90px; z-index: 40; }
 .auth-foot { text-align: center; color: var(--faint); font-size: 12px; margin: 18px 0 6px; }
+.auth-invite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(201, 245, 66, 0.35);
+  border-radius: 14px;
+  background: rgba(201, 245, 66, 0.07);
+  color: var(--text);
+  font-size: 13px;
+}
+.auth-invite svg { color: var(--volt); flex-shrink: 0; }
 .textlink {
   background: none;
   border: none;

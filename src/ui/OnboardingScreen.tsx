@@ -29,6 +29,9 @@ export function OnboardingScreen() {
 
 function Landing({ accounts, onCreate, onSignIn }: { accounts: User[]; onCreate: () => void; onSignIn: () => void }) {
   const store = useStore()
+  // A team invite deep link (#/join/CODE) survives signup — the router picks it
+  // up as soon as the account is verified. Acknowledge it up front.
+  const invite = window.location.hash.match(/^#\/join\/([A-Za-z0-9]{8})/)?.[1]?.toUpperCase()
   return (
     <Shell>
       <div className="auth-hero">
@@ -38,6 +41,15 @@ function Landing({ accounts, onCreate, onSignIn }: { accounts: User[]; onCreate:
         </div>
         <p className="auth-tagline">Real leagues. Verified results. Earned titles.</p>
       </div>
+      {invite && (
+        <div className="auth-invite">
+          <Icon name="ticket" size={16} />
+          <span>
+            You&rsquo;re invited — code <strong className="num">{invite}</strong>.{' '}
+            {accounts.length > 0 ? 'Sign in to accept it.' : 'Create an account to accept it.'}
+          </span>
+        </div>
+      )}
       <div className="auth-actions">
         {accounts.length > 0 ? (
           <>
