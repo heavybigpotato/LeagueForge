@@ -43,8 +43,7 @@ export function CreateTeamScreen() {
       <div className="kicker" style={{ marginTop: 10 }}>New team</div>
       <h1>Create a Team</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        You will be the captain. The team starts as <strong>Pending</strong> — it joins the league only after{' '}
-        {league.minPlayersPerTeam} verified players are on the roster.
+        You&rsquo;re the captain. The team goes official at {league.minPlayersPerTeam} verified players.
       </p>
 
       <div className="card">

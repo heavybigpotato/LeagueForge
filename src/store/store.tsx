@@ -86,7 +86,7 @@ export interface StoreApi {
   verifyPhone(code: string): boolean
   signOut(): void
   /** Password-checked sign-in; also how identities are switched. */
-  signIn(userId: string, password: string): boolean
+  signIn(userId: string, password: string, opts?: { quiet?: boolean }): boolean
   /** Regenerate the local demo verification codes for the signed-in account. */
   resendCodes(): void
   /** Explicit guided demo: generates labeled demo data through real commands. */
@@ -276,7 +276,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       applyImportedState: (imported) => {
         commit({ ...imported, notifications: [] }, 'Backup imported — local state replaced.', 'info')
       },
-      signIn: (userId, password) => {
+      signIn: (userId, password, opts) => {
         try {
           const user = state.users.find((u) => u.id === userId)
           if (!user) throw new Error('Account not found.')
@@ -284,7 +284,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           commit({ ...state, currentUserId: userId })
           return true
         } catch (e) {
-          fail(e)
+          if (!opts?.quiet) fail(e)
           return false
         }
       },

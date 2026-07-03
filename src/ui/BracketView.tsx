@@ -23,16 +23,12 @@ export function PlayoffsTab({ league }: { league: League }) {
     <div>
       {!started && (
         <>
-          <EmptyState icon="trophy">
-            The bracket appears here once the commissioner starts the playoffs. The top seeds qualify from the verified
-            standings, and every playoff result goes through the same two-captain verification as the regular season.
-          </EmptyState>
+          <EmptyState icon="trophy">The bracket appears when the commissioner starts the playoffs.</EmptyState>
           {isCommissioner && (
             <>
               {!regularDone && (
                 <p className="faint" style={{ textAlign: 'center' }}>
-                  Heads up: {leagueMatches.filter((m) => m.stage !== 'playoff' && m.status !== 'official').length} regular-season
-                  match(es) are still unresolved — seeding uses the standings as they are right now.
+                  {leagueMatches.filter((m) => m.stage !== 'playoff' && m.status !== 'official').length} matches still open — seeding uses the table as it stands.
                 </p>
               )}
               <button className="btn primary" onClick={() => startPlayoffs(league.id)} disabled={official.length < 2}>
@@ -72,10 +68,7 @@ export function PlayoffsTab({ league }: { league: League }) {
               </div>
             </div>
           </div>
-          <p className="faint">
-            Seeded from the verified standings. Winners advance automatically when results are verified; playoff matches
-            cannot end in a draw.
-          </p>
+          <p className="faint">Winners advance as results are verified. No draws.</p>
         </>
       )}
 

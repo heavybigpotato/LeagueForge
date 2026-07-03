@@ -47,7 +47,7 @@ export function HomeScreen() {
       <p className="muted" style={{ marginTop: 0 }}>
         {attention > 0
           ? `${attention} thing${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} your attention.`
-          : 'All caught up. Nothing needs your attention.'}
+          : 'All caught up.'}
       </p>
 
       {(attention > 0 || pendingTeams.length > 0) && (
@@ -135,14 +135,14 @@ export function HomeScreen() {
             icon="trophy"
             tone="volt"
             title="Create a league"
-            sub="You become the commissioner — set the rules, approve teams, run the season"
+            sub="Set the rules. Run the season."
           />
           <ActionCard
             to="/join"
             icon="ticket"
             tone="blue"
             title="Join a team"
-            sub="Got an 8-character invite code from a captain? Enter it here"
+            sub="Have a code from a captain?"
           />
         </>
       )}

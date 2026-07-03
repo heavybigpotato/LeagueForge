@@ -104,9 +104,7 @@ export function LeagueSettingsScreen() {
       <button className="btn primary" onClick={save}>Save settings</button>
 
       <h2>Referees</h2>
-      <p className="faint" style={{ marginTop: -2 }}>
-        Referees can enter official scores and resolve disputes — a neutral third whistle for your league.
-      </p>
+      <p className="faint" style={{ marginTop: -2 }}>A neutral whistle — referees can settle disputes.</p>
       <div className="card">
         {candidates.length === 0 && <p className="faint" style={{ margin: 0 }}>No eligible verified accounts yet.</p>}
         {candidates.map((u) => {
@@ -140,8 +138,7 @@ export function LeagueSettingsScreen() {
           </div>
         </div>
         <p className="faint">
-          Ending the season freezes the final table and champions into league history, starts season{' '}
-          {league.currentSeason + 1}, and unlocks all rosters so squads can be reshaped.
+          The table and champions freeze into History; rosters unlock for season {league.currentSeason + 1}.
         </p>
         <button
           className="btn danger"

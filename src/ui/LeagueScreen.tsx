@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { computeStandings, formGuide } from '../core/standings'
-import { bracket, bracketSize, playoffLabel, playoffsStarted } from '../core/playoffs'
+import { bracket, bracketSize, playoffLabel } from '../core/playoffs'
 import { powerRankings } from '../core/powerRankings'
 import { shareStandingsCard } from './shareCards'
 import type { Match, Team } from '../core/types'
@@ -93,9 +93,7 @@ export function LeagueScreen() {
 
       {tab === 'standings' &&
         (isKnockout ? (
-          <EmptyState icon="trophy">
-            This league is a knockout cup — there is no table. Head to the Bracket tab to follow the ties.
-          </EmptyState>
+          <EmptyState icon="trophy">It&rsquo;s a cup — no table. The story is in the Bracket tab.</EmptyState>
         ) : (
           <Standings leagueId={league.id} />
         ))}
@@ -108,8 +106,7 @@ export function LeagueScreen() {
         <div>
           {matches.length === 0 ? (
             <EmptyState icon="calendar">
-              No fixtures yet.{' '}
-              {isCommissioner ? 'Generate the schedule once at least two teams are official.' : 'The commissioner has not generated the schedule.'}
+              {isCommissioner ? 'Two official teams and you can generate the schedule.' : 'No fixtures yet.'}
             </EmptyState>
           ) : (
             matches
@@ -173,11 +170,10 @@ function Standings({ leagueId }: { leagueId: string }) {
   const teams = state.teams.filter((t) => t.leagueId === leagueId)
   const rows = computeStandings(league, teams, state.matches)
   const frozen = state.matches.some((m) => m.leagueId === leagueId && m.status === 'disputed')
-  const started = playoffsStarted(leagueId, state.matches)
   const qualSpots = league.playoffFormat !== 'none' ? bracketSize(rows.length) : 0
 
   if (rows.length === 0) {
-    return <EmptyState icon="activity">Standings appear once teams become official. Pending teams are never listed.</EmptyState>
+    return <EmptyState icon="activity">The table starts when teams go official.</EmptyState>
   }
   return (
     <>
@@ -218,8 +214,7 @@ function Standings({ leagueId }: { leagueId: string }) {
         </table>
       </div>
       <div className="statusnote">
-        Only verified results count · tie-breakers: goal difference, goals for, head-to-head
-        {qualSpots > 0 && ` · top ${qualSpots} ${started ? 'qualified for' : 'qualify for'} the playoffs`}
+        Verified results only{qualSpots > 0 && ` · top ${qualSpots} make the playoffs`}
       </div>
     </div>
 
@@ -260,9 +255,7 @@ function PowerRankingsCard({ leagueId }: { leagueId: string }) {
             </div>
           )
         })}
-        <p className="faint" style={{ marginBottom: 0 }}>
-          Rewards form, margin (capped), and strength of opponent — recent matches weigh more. Verified results only.
-        </p>
+        <p className="faint" style={{ marginBottom: 0 }}>Form, margin, and strength of opponent — recent games count more.</p>
       </div>
     </>
   )
@@ -329,9 +322,7 @@ function AuditLog({ leagueId }: { leagueId: string }) {
     <div className="card">
       <div className="row" style={{ marginBottom: 12 }}>
         <span style={{ color: 'var(--volt)' }}><Icon name="scroll" size={17} /></span>
-        <span className="faint">
-          Immutable record of every action in this league. Entries can only be appended — never edited or deleted.
-        </span>
+        <span className="faint">Every action in this league, on the record. Nothing gets edited or deleted.</span>
       </div>
       <div className="audit">
         {entries.map((e, i) => (
@@ -374,7 +365,7 @@ function Announcements({ league, isCommissioner }: { league: League; isCommissio
           </div>
         )
       })}
-      {latest.length === 0 && <p className="faint" style={{ margin: '8px 0 0' }}>Nothing posted yet — say something to your league.</p>}
+      {latest.length === 0 && <p className="faint" style={{ margin: '8px 0 0' }}>Nothing yet. Say something.</p>}
       {isCommissioner && (
         <div className="row" style={{ marginTop: 12, gap: 8 }}>
           <input
@@ -412,10 +403,7 @@ function SeasonHistory({ league }: { league: League }) {
   const records = league.seasons.slice().reverse()
   if (records.length === 0) {
     return (
-      <EmptyState icon="scroll">
-        No archived seasons yet. When the commissioner ends Season {league.currentSeason}, its final table and champions
-        are frozen here forever.
-      </EmptyState>
+      <EmptyState icon="scroll">Season {league.currentSeason} is still being written. Finished seasons live here forever.</EmptyState>
     )
   }
   return (
@@ -482,16 +470,16 @@ function SetupChecklist({ league }: { league: League }) {
   const disputes = matches.filter((m) => m.status === 'disputed')
 
   const steps: { label: string; done: boolean; hint: string }[] = [
-    { label: 'League created', done: true, hint: 'Rules, format, and scoring are set. Adjust them in Settings.' },
-    { label: 'Captains invited', done: teams.length > 0, hint: 'Share the league - captains create pending teams from the Teams tab.' },
+    { label: 'League created', done: true, hint: 'Adjust rules anytime in Settings.' },
+    { label: 'Captains invited', done: teams.length > 0, hint: 'Captains create their teams from the Teams tab.' },
     {
       label: `${Math.max(2, league.minTeams)} official teams`,
       done: official.length >= Math.max(2, league.minTeams),
-      hint: `Teams activate automatically at ${league.minPlayersPerTeam} verified players. ${official.length} official so far.`,
+      hint: `Teams go official at ${league.minPlayersPerTeam} verified players. ${official.length} so far.`,
     },
-    { label: 'Schedule generated', done: matches.length > 0, hint: 'Generate fixtures (or draw the cup) from the Schedule tab.' },
-    { label: 'First verified result', done: verified.length > 0, hint: 'Captains submit, opponents confirm - only then do standings move.' },
-    { label: 'No open disputes', done: disputes.length === 0, hint: disputes.length > 0 ? `${disputes.length} dispute(s) need your ruling.` : 'Disputes freeze standings until you rule.' },
+    { label: 'Schedule generated', done: matches.length > 0, hint: 'Head to the Schedule tab.' },
+    { label: 'First verified result', done: verified.length > 0, hint: 'Captains submit, opponents confirm.' },
+    { label: 'No open disputes', done: disputes.length === 0, hint: disputes.length > 0 ? `${disputes.length} waiting on your ruling.` : '' },
   ]
   const doneCount = steps.filter((s) => s.done).length
   if (doneCount === steps.length) return null

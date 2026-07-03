@@ -47,9 +47,7 @@ export function CreateLeagueScreen() {
       <Link to="/" className="backlink"><Icon name="arrowLeft" size={15} /> Back</Link>
       <div className="kicker" style={{ marginTop: 10 }}>New league</div>
       <h1>Create a League</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
-        You will be the commissioner: you approve teams, review disputes, and manage the season.
-      </p>
+      <p className="muted" style={{ marginTop: 0 }}>You&rsquo;ll run it — teams, disputes, seasons.</p>
 
       <label className="field">
         <span>League name</span>
@@ -132,14 +130,12 @@ export function CreateLeagueScreen() {
       {form.scheduleFormat === 'knockout' && (
         <p className="faint" style={{ display: 'flex', gap: 8 }}>
           <Icon name="trophy" size={14} />
-          <span>Knockout cup: the whole season is a single-elimination bracket — no table, straight to the drama.</span>
+          <span>One bracket. No table. Win or go home.</span>
         </p>
       )}
       <p className="faint" style={{ display: 'flex', gap: 8 }}>
         <Icon name="shield" size={14} />
-        <span>
-          Roster minimum can be raised for large-squad sports but never below the platform floor of {PLATFORM_MIN_PLAYERS} verified players.
-        </span>
+        <span>Roster minimum: {PLATFORM_MIN_PLAYERS} verified players, no exceptions.</span>
       </p>
       <button className="btn primary" onClick={submit}>Create League</button>
     </div>
