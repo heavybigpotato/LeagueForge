@@ -22,9 +22,7 @@ export function JoinScreen() {
     <div>
       <div className="kicker">Got an invite?</div>
       <h1>Join a Team</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Enter the 8-character code your captain shared — or open their invite link / scan their QR code.
-      </p>
+      <p className="muted" style={{ marginTop: 0 }}>Enter the code your captain shared.</p>
 
       <div className="card">
         <div className="row">
@@ -35,7 +33,7 @@ export function JoinScreen() {
           </div>
         </div>
         {!verified && (
-          <p className="faint" style={{ marginBottom: 0 }}>You must verify your email and phone before you can join a roster.</p>
+          <p className="faint" style={{ marginBottom: 0 }}>Finish verification before joining a roster.</p>
         )}
       </div>
 
@@ -52,13 +50,7 @@ export function JoinScreen() {
       <button className="btn primary" disabled={code.length !== 8 || !verified} onClick={join}>
         <Icon name="ticket" size={16} /> Join Team
       </button>
-      <p className="faint" style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-        <Icon name="shield" size={14} />
-        <span>
-          Joining sends a request to the team captain. You are added to the roster only after approval, and one account can
-          only be on one team per league.
-        </span>
-      </p>
+      <p className="faint" style={{ marginTop: 16, textAlign: 'center' }}>The captain approves every request.</p>
 
       <PendingRequests />
     </div>

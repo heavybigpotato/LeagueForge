@@ -151,7 +151,7 @@ export function MatchScreen() {
             <span style={{ color: 'var(--volt)' }}><Icon name="send" size={16} /></span>
             <strong>Submit final score</strong>
           </div>
-          <p className="faint">The opposing captain must confirm before this result becomes official.</p>
+          <p className="faint">Goes official once the other captain confirms.</p>
           <div className="fieldgrid">
             <label className="field">
               <span>{home.name}</span>
@@ -174,7 +174,7 @@ export function MatchScreen() {
             <span style={{ color: 'var(--blue)' }}><Icon name="whistle" size={16} /></span>
             <strong>Respond to submitted score</strong>
           </div>
-          <p className="faint">Confirming makes the result official and updates the standings immediately.</p>
+          
           <button className="btn primary" onClick={() => store.confirmScore(match.id)}>
             <Icon name="check" size={16} /> Confirm result
           </button>
@@ -194,7 +194,7 @@ export function MatchScreen() {
             <span style={{ color: 'var(--gold)' }}><Icon name="shield" size={16} /></span>
             <strong>{isCommissioner ? 'Commissioner' : 'Referee'} resolution</strong>
           </div>
-          <p className="faint">Review the evidence below and enter the final, official score.</p>
+          <p className="faint">Your ruling is final.</p>
           <div className="fieldgrid">
             <label className="field">
               <span>{home.name}</span>
@@ -241,7 +241,7 @@ export function MatchScreen() {
     return (
         <div className="card">
           <strong>Add evidence</strong>
-          <p className="faint" style={{ margin: '6px 0 0' }}>Evidence notes are saved locally on this device — verified file uploads require hosted storage.</p>
+          <p className="faint" style={{ margin: '6px 0 0' }}>Notes stay on this device.</p>
           <div className="fieldgrid" style={{ marginTop: 10 }}>
             <label className="field">
               <span>Type</span>

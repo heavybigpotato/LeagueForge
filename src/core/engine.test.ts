@@ -96,17 +96,17 @@ describe('accounts and verification', () => {
 
   it('rejects invalid or duplicate identities', () => {
     const { user } = createAccount({ username: 'taken', email: 'taken@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
-    expect(() => createAccount({ username: 'x', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/Username/)
+    expect(() => createAccount({ username: 'x', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/At least 3/)
     expect(() => createAccount({ username: 'TAKEN', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/taken/)
     expect(() => createAccount({ username: 'newuser', email: 'not-an-email', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/email/)
-    expect(() => createAccount({ username: 'newuser', email: 'taken@example.com', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/already exists/)
-    expect(() => createAccount({ username: 'newuser', email: 'a@b.co', phone: '12', password: 'stadium-lights-9' }, [user])).toThrow(/phone/)
+    expect(() => createAccount({ username: 'newuser', email: 'taken@example.com', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/already uses this email/)
+    expect(() => createAccount({ username: 'newuser', email: 'a@b.co', phone: '12', password: 'stadium-lights-9' }, [user])).toThrow(/phone number/)
   })
 
   it('passwords: minimum length enforced, salted hash verifies, wrong password rejected', () => {
     expect(() =>
       createAccount({ username: 'shortpw', email: 's@example.com', phone: '+15550003333', password: 'short' }, []),
-    ).toThrow(/at least 8/)
+    ).toThrow(/At least 8/)
     const { user } = createAccount({ username: 'lockedin', email: 'l@example.com', phone: '+15550003334', password: 'stadium-lights-9' }, [])
     expect(user.passwordHash).not.toContain('stadium')
     expect(checkPassword(user, 'stadium-lights-9')).toBe(true)

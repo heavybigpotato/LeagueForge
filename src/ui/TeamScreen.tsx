@@ -16,7 +16,6 @@ export function TeamScreen() {
   const team = state.teams.find((t) => t.id === teamId)
   if (!team) return <EmptyState icon="alert">Team not found.</EmptyState>
   const league = state.leagues.find((l) => l.id === team.leagueId)!
-  const captain = state.users.find((u) => u.id === team.captainId)
   const isCaptain = currentUser.id === team.captainId
   const userOf = (id: string) => state.users.find((u) => u.id === id)
   const championships = state.leagues.reduce(
@@ -65,8 +64,7 @@ export function TeamScreen() {
           </div>
           <RosterProgress current={team.memberIds.length} required={league.minPlayersPerTeam} />
           <p className="faint" style={{ marginBottom: 0 }}>
-            A pending team cannot play matches, be scheduled, or appear in standings. When player #{league.minPlayersPerTeam} is
-            approved, the team is automatically registered in the league and the commissioner is notified.
+            Registration is automatic at {league.minPlayersPerTeam} verified players. Until then: no fixtures, no standings.
           </p>
         </div>
       ) : (
@@ -76,8 +74,7 @@ export function TeamScreen() {
             <strong>Officially registered</strong>
           </div>
           <p className="faint" style={{ marginBottom: 0 }}>
-            Activated {team.activatedAt ? new Date(team.activatedAt).toLocaleDateString() : ''} — this team is in the league,
-            included in the schedule and eligible for standings.
+            Since {team.activatedAt ? new Date(team.activatedAt).toLocaleDateString() : 'activation'} — in the league, on the schedule.
           </p>
         </div>
       )}
@@ -88,9 +85,7 @@ export function TeamScreen() {
             <span style={{ color: 'var(--volt)' }}><Icon name="ticket" size={17} /></span>
             <strong>Invite players</strong>
           </div>
-          <p className="faint" style={{ position: 'relative' }}>
-            Share the code, link, or QR. Players need a verified email and phone number to join.
-          </p>
+          <p className="faint" style={{ position: 'relative' }}>Share the code, link, or QR.</p>
           <div className="invite-code">{team.inviteCode}</div>
           <div className="faint" style={{ textAlign: 'center', position: 'relative' }}>{inviteLink(team.inviteCode)}</div>
           <InviteQR code={team.inviteCode} />
@@ -150,9 +145,7 @@ export function TeamScreen() {
           )
         })}
       </div>
-      {captain && (
-        <p className="faint">Captain @{captain.username} manages the roster, submits scores, and confirms results.</p>
-      )}
+
     </div>
   )
 }

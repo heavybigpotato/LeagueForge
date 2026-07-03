@@ -69,27 +69,50 @@ export function checkPassword(user: User, password: string): boolean {
   return hashPassword(password, user.passwordSalt) === user.passwordHash
 }
 
+/** Per-field validators — return an error message, or null when valid. */
+export function usernameError(username: string, existing: User[]): string | null {
+  const name = username.trim()
+  if (name.length < 3) return 'At least 3 characters.'
+  if (name.length > 20) return 'Keep it under 20 characters.'
+  if (!/^[a-z0-9_]+$/i.test(name)) return 'Letters, numbers, and underscores only.'
+  if (existing.some((u) => u.username.toLowerCase() === name.toLowerCase())) return 'That username is taken.'
+  return null
+}
+
+export function emailError(email: string, existing: User[]): string | null {
+  const value = email.trim()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "That doesn't look like an email."
+  if (existing.some((u) => u.email.toLowerCase() === value.toLowerCase())) return 'An account already uses this email.'
+  return null
+}
+
+export function phoneError(phone: string): string | null {
+  const digits = phone.replace(/[^\d]/g, '')
+  if (digits.length < 7 || digits.length > 15) return "That doesn't look like a phone number."
+  return null
+}
+
+export function passwordError(password: string): string | null {
+  if (password.length < PASSWORD_MIN_LENGTH) return `At least ${PASSWORD_MIN_LENGTH} characters.`
+  return null
+}
+
+/** 0–3 rough strength score for the meter. */
+export function passwordStrength(password: string): number {
+  let score = 0
+  if (password.length >= PASSWORD_MIN_LENGTH) score++
+  if (password.length >= 12) score++
+  if (/[0-9]/.test(password) && /[a-zA-Z]/.test(password)) score++
+  return score
+}
+
 export function validateSignUp(input: SignUpInput, existing: User[]): void {
-  const username = input.username.trim()
-  if (!/^[a-z0-9_]{3,20}$/i.test(username)) {
-    throw new Error('Username must be 3–20 characters: letters, numbers, underscores.')
-  }
-  if (existing.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
-    throw new Error('That username is taken on this device.')
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) {
-    throw new Error('Enter a valid email address.')
-  }
-  if (existing.some((u) => u.email.toLowerCase() === input.email.trim().toLowerCase())) {
-    throw new Error('An account with this email already exists on this device.')
-  }
-  const digits = input.phone.replace(/[^\d]/g, '')
-  if (digits.length < 7 || digits.length > 15) {
-    throw new Error('Enter a valid phone number.')
-  }
-  if (input.password.length < PASSWORD_MIN_LENGTH) {
-    throw new Error(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
-  }
+  const problem =
+    usernameError(input.username, existing) ??
+    emailError(input.email, existing) ??
+    phoneError(input.phone) ??
+    passwordError(input.password)
+  if (problem) throw new Error(problem)
 }
 
 export function createAccount(

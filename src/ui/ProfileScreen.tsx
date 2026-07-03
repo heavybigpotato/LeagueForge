@@ -80,9 +80,7 @@ export function ProfileScreen() {
       {switchable.length > 1 && (
         <>
           <h2>Switch identity</h2>
-          <p className="faint" style={{ marginTop: -2 }}>
-            Accounts on this device, plus captains and commissioners in your leagues — switch to act in a different role.
-          </p>
+
           <div className="card">
             {switchable.map((u) => (
               <div key={u.id}>
@@ -138,10 +136,7 @@ export function ProfileScreen() {
       <Link to={ROUTES.dataCenter} className="btn" style={{ textDecoration: 'none', marginTop: 8 }}>
         <Icon name="scroll" size={15} /> Data Center — backup, import, demo &amp; reset
       </Link>
-      <p className="faint" style={{ marginTop: 12 }}>
-        Local-only identity: accounts and league data live in this browser&rsquo;s storage — export a backup from the Data
-        Center to move or protect them.
-      </p>
+
     </div>
   )
 }

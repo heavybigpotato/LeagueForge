@@ -39,8 +39,7 @@ export function DataCenterScreen() {
       <div className="kicker" style={{ marginTop: 10 }}>Local-first</div>
       <h1>Data Center</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        LeagueForge runs entirely on this device. Data is saved in your browser&rsquo;s local storage — not on a server, not
-        synced, not encrypted at rest. Back it up here to move it or keep it safe.
+        Everything lives on this device — no server, no sync. Back it up here.
       </p>
 
       {corruptedBackupRaw && (
@@ -90,8 +89,7 @@ export function DataCenterScreen() {
       <h2>Backup</h2>
       <div className="card">
         <p className="faint" style={{ marginTop: 0 }}>
-          Exports every account, league, team, match, season, and audit entry on this device as one JSON file (schema
-          v{SCHEMA_VERSION}). Import validates and previews a backup before anything is replaced.
+          One JSON file with everything. Imports are previewed before anything changes.
         </p>
         <button
           className="btn primary"
@@ -109,15 +107,14 @@ export function DataCenterScreen() {
         {demo ? (
           <>
             <p className="faint" style={{ marginTop: 0 }}>
-              Guided-demo data is present (accounts and a league labeled demo). Removing it never touches your own data.
+              Demo data is loaded. Removing it never touches your own leagues.
             </p>
             <button className="btn danger" onClick={() => store.removeDemoData()}>Remove all demo data</button>
           </>
         ) : (
           <>
             <p className="faint" style={{ marginTop: 0 }}>
-              No demo data. The guided demo builds a fully labeled sample league through the same verified flows real
-              leagues use — useful for exploring before inviting anyone.
+              A sample league to poke around in before inviting anyone. Clearly labeled, gone in one tap.
             </p>
             <button className="btn" onClick={() => store.startGuidedDemo()}>
               <Icon name="sparkle" size={16} /> Generate guided demo
@@ -136,8 +133,7 @@ export function DataCenterScreen() {
         <Icon name="x" size={15} /> Erase all data on this device
       </button>
       <p className="faint" style={{ marginTop: 12 }}>
-        Production note: real email/SMS delivery, server accounts, synced storage, and signed audit logs require a hosted
-        backend — this build is intentionally local-first and says so everywhere it matters.
+        Email, SMS, sync, and hosted leagues need a backend. This build is local by design.
       </p>
     </div>
   )
