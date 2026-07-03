@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { computeStandings, formGuide } from '../core/standings'
-import { bracket, bracketSize, playoffLabel, playoffsStarted } from '../core/playoffs'
+import { currentSeasonMatches } from '../core/seasons'
 import { powerRankings } from '../core/powerRankings'
 import { ROUTES } from '../core/config'
 import { shareStandingsCard } from './shareCards'
@@ -10,12 +10,11 @@ import type { Match, Team } from '../core/types'
 import { Badge, EmptyState, FormPills, RosterProgress, TeamLogo, formatDate, formatWhen } from './components'
 import type { League, SeasonRecord } from '../core/types'
 import { Icon, LeagueBadge } from './icons'
-import { PlayoffsTab } from './BracketView'
+import { LeagueCodeCard } from './LeagueCodeCard'
 
-// Three tabs, at most. 'main' is the Table (or the Bracket for a cup);
-// 'matches' folds in fixtures, results, and the playoff bracket; 'teams'
-// is the roster of clubs. Everything rarer (season history, the activity
-// log, commissioner settings) hangs off links, not tabs.
+// Three tabs, always: the Table, the Matches, and the Teams. Everything
+// rarer (past seasons, the activity log, commissioner settings) hangs off
+// links, not tabs.
 type Tab = 'main' | 'matches' | 'teams'
 
 export function LeagueScreen() {
@@ -37,12 +36,15 @@ export function LeagueScreen() {
     (t) => t.captainId === currentUser.id && t.status === 'official' && t.leagueId === null,
   )
   const goals = verified.reduce((sum, m) => sum + (m.result ? m.result.homeScore + m.result.awayScore : 0), 0)
-  const champion = teams.find((t) => t.id === bracket(league.id, state.matches, league.currentSeason)?.championTeamId)
-  const isKnockout = league.scheduleFormat === 'knockout'
+  // Reigning champion = winner of the most recently archived season.
+  const lastSeason = league.seasons[league.seasons.length - 1]
+  const reigningChampion = teams.find((t) => t.id === lastSeason?.championTeamId)
 
-  const tabDefs: { key: Tab; label: string }[] = isKnockout
-    ? [{ key: 'main', label: 'Bracket' }, { key: 'teams', label: 'Teams' }]
-    : [{ key: 'main', label: 'Table' }, { key: 'matches', label: 'Matches' }, { key: 'teams', label: 'Teams' }]
+  const tabDefs: { key: Tab; label: string }[] = [
+    { key: 'main', label: 'Table' },
+    { key: 'matches', label: 'Matches' },
+    { key: 'teams', label: 'Teams' },
+  ]
   const activeTab = tabDefs.some((t) => t.key === tab) ? tab : 'main'
 
   return (
@@ -70,10 +72,10 @@ export function LeagueScreen() {
             <h1>{league.name}</h1>
             <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <Badge kind="volt">Season {league.currentSeason}</Badge>
-              <Badge kind="neutral">{isKnockout ? 'knockout cup' : league.privacy}</Badge>
+              <Badge kind="neutral">{league.privacy}</Badge>
               {isCommissioner && <Badge kind="volt">Commissioner</Badge>}
               {myTeam && !isCommissioner && <Badge kind="awaiting">{myTeam.name}</Badge>}
-              {champion && <Badge kind="pending">🏆 {champion.name}</Badge>}
+              {reigningChampion && <Badge kind="pending">🏆 {reigningChampion.name}</Badge>}
             </div>
           </div>
         </div>
@@ -97,20 +99,18 @@ export function LeagueScreen() {
         ))}
       </div>
 
-      {activeTab === 'main' &&
-        (isKnockout ? (
-          <PlayoffsTab league={league} />
-        ) : (
-          <>
-            <Standings leagueId={league.id} />
-            <PastSeasons league={league} />
-          </>
-        ))}
+      {activeTab === 'main' && (
+        <>
+          <Standings leagueId={league.id} />
+          <PastSeasons league={league} />
+        </>
+      )}
 
       {activeTab === 'matches' && <MatchesTab league={league} />}
 
       {activeTab === 'teams' && (
         <div>
+          <LeagueCodeCard league={league} />
           {teams.map((t) => (
             <Link to={`/team/${t.id}`} key={t.id} className="card clickable">
               <div className="row">
@@ -155,36 +155,59 @@ export function LeagueScreen() {
   )
 }
 
-/** The Matches tab: fixtures and results, with the playoff bracket folded in. */
+/**
+ * The Matches tab. The season doesn't start on its own — the commissioner
+ * kicks it off with one button, which draws the fixtures and closes entry.
+ * Until then teams keep registering.
+ */
 function MatchesTab({ league }: { league: League }) {
-  const { state, currentUser, generateSchedule } = useStore()
+  const { state, currentUser, launchSeason } = useStore()
   const isCommissioner = currentUser.id === league.commissionerId
   const teams = state.teams.filter((t) => t.leagueId === league.id)
-  const seasonMatches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
-  const regular = seasonMatches.filter((m) => m.stage !== 'playoff').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
-  const playoffsOn = playoffsStarted(league.id, state.matches, league.currentSeason)
+  const official = teams.filter((t) => t.status === 'official')
+  const fixtures = currentSeasonMatches(league, state.matches).slice().sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+  const launched = fixtures.length > 0
+
+  if (!launched) {
+    return (
+      <div>
+        <div className="card">
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ color: 'var(--volt)' }}><Icon name="calendar" size={17} /></span>
+            <div className="grow">
+              <strong>Season {league.currentSeason} hasn&rsquo;t started</strong>
+              <div className="faint">
+                {official.length} official team{official.length === 1 ? '' : 's'} registered
+                {official.length < 2 ? ' — 2 needed to kick off.' : '. Registration is open until kickoff.'}
+              </div>
+            </div>
+          </div>
+          {isCommissioner ? (
+            <button className="btn primary" style={{ marginTop: 12 }} disabled={official.length < 2} onClick={() => launchSeason(league.id)}>
+              <Icon name="trophy" size={16} /> Launch Season {league.currentSeason}
+            </button>
+          ) : (
+            <p className="faint" style={{ marginBottom: 0 }}>The commissioner starts the season once teams are in.</p>
+          )}
+        </div>
+        {isCommissioner && official.length >= 2 && (
+          <p className="faint" style={{ display: 'flex', gap: 8 }}>
+            <Icon name="alert" size={14} />
+            <span>Launching draws the fixtures and locks the team list for this season.</span>
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div>
-      {playoffsOn && <PlayoffsTab league={league} embedded />}
-
-      {regular.length > 0 && playoffsOn && <h2>Regular season</h2>}
-      {regular.length === 0 ? (
-        <EmptyState icon="calendar">
-          {isCommissioner ? 'Two official teams and you can generate the schedule.' : 'No fixtures yet.'}
-        </EmptyState>
-      ) : (
-        regular.map((m) => <MatchCard key={m.id} match={m} teams={teams} />)
-      )}
-
+      {fixtures.map((m) => <MatchCard key={m.id} match={m} teams={teams} />)}
       {isCommissioner && (
-        <button className="btn" onClick={() => generateSchedule(league.id)}>
-          <Icon name="calendar" size={16} />{' '}
-          {regular.length ? 'Regenerate remaining fixtures' : `Generate Season ${league.currentSeason} schedule`}
+        <button className="btn" onClick={() => launchSeason(league.id)}>
+          <Icon name="calendar" size={16} /> Redraw remaining fixtures
         </button>
       )}
-
-      {!playoffsOn && <PlayoffsTab league={league} embedded />}
     </div>
   )
 }
@@ -195,7 +218,6 @@ function Standings({ leagueId }: { leagueId: string }) {
   const teams = state.teams.filter((t) => t.leagueId === leagueId)
   const rows = computeStandings(league, teams, state.matches)
   const frozen = state.matches.some((m) => m.leagueId === leagueId && m.status === 'disputed')
-  const qualSpots = league.playoffFormat !== 'none' ? bracketSize(rows.length) : 0
 
   if (rows.length === 0) {
     return <EmptyState icon="activity">The table starts when teams go official.</EmptyState>
@@ -218,7 +240,7 @@ function Standings({ leagueId }: { leagueId: string }) {
           <tbody>
             {rows.map((r, i) => {
               const team = teams.find((t) => t.id === r.teamId)!
-              const cls = [i === 0 && r.played > 0 ? 'lead' : '', i < qualSpots ? 'qual' : ''].join(' ').trim()
+              const cls = i === 0 && r.played > 0 ? 'lead' : ''
               return (
                 <tr key={r.teamId} className={cls}>
                   <td className="pos">{i + 1}</td>
@@ -238,9 +260,7 @@ function Standings({ leagueId }: { leagueId: string }) {
           </tbody>
         </table>
       </div>
-      <div className="statusnote">
-        Verified results only{qualSpots > 0 && ` · top ${qualSpots} make the playoffs`}
-      </div>
+      <div className="statusnote">Verified results only · the table decides the champion</div>
     </div>
 
     {rows.some((r) => r.played > 0) && (
@@ -287,20 +307,14 @@ function PowerRankingsCard({ leagueId }: { leagueId: string }) {
 }
 
 function MatchCard({ match, teams }: { match: Match; teams: Team[] }) {
-  const { state } = useStore()
   const home = teams.find((t) => t.id === match.homeTeamId)
   const away = teams.find((t) => t.id === match.awayTeamId)
   if (!home || !away) return null
   const score = match.result ?? match.submission
-  const isPlayoff = match.stage === 'playoff'
   return (
     <Link to={`/match/${match.id}`} className="card clickable flush fixture">
       <div className="fixture-top">
-        {isPlayoff ? (
-          <span style={{ color: 'var(--gold)', fontWeight: 800 }}>🏆 {playoffLabel(match.leagueId, state.matches, match)}</span>
-        ) : (
-          <span>Round {match.round}</span>
-        )}
+        <span>Round {match.round}</span>
         <span>·</span>
         <span>{formatDate(match.scheduledAt)}</span>
         <span>·</span>
@@ -487,13 +501,13 @@ function SetupChecklist({ league }: { league: League }) {
 
   const steps: { label: string; done: boolean; hint: string }[] = [
     { label: 'League created', done: true, hint: 'Adjust rules anytime in Settings.' },
-    { label: 'Captains invited', done: teams.length > 0, hint: 'Captains create their teams from the Teams tab.' },
+    { label: 'Share the join code', done: teams.length > 0, hint: 'Captains enter it (Teams tab) to bring their team in.' },
     {
-      label: `${Math.max(2, league.minTeams)} official teams`,
+      label: `${Math.max(2, league.minTeams)} teams registered`,
       done: official.length >= Math.max(2, league.minTeams),
-      hint: `Teams go official at ${league.minPlayersPerTeam} verified players. ${official.length} so far.`,
+      hint: `${official.length} in so far — you need ${Math.max(2, league.minTeams)} to kick off.`,
     },
-    { label: 'Schedule generated', done: matches.length > 0, hint: 'Head to the Schedule tab.' },
+    { label: 'Season launched', done: matches.length > 0, hint: 'Hit Launch Season on the Matches tab.' },
     { label: 'First verified result', done: verified.length > 0, hint: 'Captains submit, opponents confirm.' },
     { label: 'No open disputes', done: disputes.length === 0, hint: disputes.length > 0 ? `${disputes.length} waiting on your ruling.` : '' },
   ]

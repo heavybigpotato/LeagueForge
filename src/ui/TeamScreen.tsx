@@ -1,9 +1,9 @@
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { inviteLink } from '../core/ids'
+import { useState } from 'react'
 import { computeTeamStats } from '../core/teamStats'
 import { formGuide } from '../core/standings'
-import { bracket } from '../core/playoffs'
 import { rosterBounds } from '../core/team'
 import { ROUTES } from '../core/config'
 import type { Team } from '../core/types'
@@ -30,10 +30,7 @@ export function TeamScreen() {
         (m.homeTeamId === team.id || m.awayTeamId === team.id),
     )
   const championships = state.leagues.reduce(
-    (count, l) =>
-      count +
-      l.seasons.filter((s) => s.championTeamId === team.id).length +
-      (bracket(l.id, state.matches, l.currentSeason)?.championTeamId === team.id ? 1 : 0),
+    (count, l) => count + l.seasons.filter((s) => s.championTeamId === team.id).length,
     0,
   )
 
@@ -115,11 +112,7 @@ export function TeamScreen() {
               <div className="faint">{team.memberIds.length} verified players, no competition yet.</div>
             </div>
           </div>
-          {isCaptain && (
-            <Link to={ROUTES.discover} className="btn primary" style={{ textDecoration: 'none', marginTop: 12 }}>
-              <Icon name="compass" size={16} /> Find a league
-            </Link>
-          )}
+          {isCaptain && <JoinLeagueBox teamId={team.id} />}
         </div>
       )}
 
@@ -190,6 +183,37 @@ export function TeamScreen() {
         })}
       </div>
 
+    </div>
+  )
+}
+
+/** A free team's two ways into a league: browse Discover, or paste a league code. */
+function JoinLeagueBox({ teamId }: { teamId: string }) {
+  const { enterLeagueByCode } = useStore()
+  const [code, setCode] = useState('')
+  return (
+    <div style={{ marginTop: 12 }}>
+      <Link to={ROUTES.discover} className="btn primary" style={{ textDecoration: 'none' }}>
+        <Icon name="compass" size={16} /> Find a league
+      </Link>
+      <div className="row" style={{ gap: 8, marginTop: 10 }}>
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="Have a league code?"
+          maxLength={8}
+          style={{ textTransform: 'uppercase', letterSpacing: '0.14em' }}
+        />
+        <button
+          className="btn small"
+          disabled={code.trim().length < 4}
+          onClick={() => {
+            if (enterLeagueByCode(teamId, code)) setCode('')
+          }}
+        >
+          Join
+        </button>
+      </div>
     </div>
   )
 }

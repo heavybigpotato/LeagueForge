@@ -1,6 +1,6 @@
-import type { AuditEntry, League, LeaguePrivacy, PlayoffFormat, ScheduleFormat, ScoringRules, Sport, TieBreaker, User } from './types'
+import type { AuditEntry, League, LeaguePrivacy, ScheduleFormat, ScoringRules, Sport, TieBreaker, User } from './types'
 import { auditEntry } from './audit'
-import { newId } from './ids'
+import { newId, newInviteCode } from './ids'
 import { resolveMinPlayers } from './team'
 export type { ScoringRules }
 
@@ -20,7 +20,6 @@ export interface CreateLeagueInput {
   minPlayersPerTeam: number
   maxPlayersPerTeam: number
   scheduleFormat: ScheduleFormat
-  playoffFormat: PlayoffFormat
   scoring: ScoringRules
   tieBreakers: TieBreaker[]
   privacy: LeaguePrivacy
@@ -63,10 +62,10 @@ export function createLeague(
     minPlayersPerTeam: minPlayers,
     maxPlayersPerTeam: input.maxPlayersPerTeam,
     scheduleFormat: input.scheduleFormat,
-    playoffFormat: input.playoffFormat,
     scoring: input.scoring,
     tieBreakers: input.tieBreakers,
     privacy: input.privacy,
+    joinCode: newInviteCode(),
     commissionerId: commissioner.id,
     refereeIds: [],
     allowTransfers: input.allowTransfers,

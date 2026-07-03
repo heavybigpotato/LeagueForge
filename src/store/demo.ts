@@ -86,7 +86,6 @@ export function buildGuidedDemo(existingUsers: User[], now: number = Date.now())
       minPlayersPerTeam: 11,
       maxPlayersPerTeam: 22,
       scheduleFormat: 'double-round-robin',
-      playoffFormat: 'single-elimination',
       scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
       tieBreakers: ['goal-difference', 'goals-for', 'head-to-head'],
       privacy: 'private',
@@ -118,7 +117,7 @@ export function buildGuidedDemo(existingUsers: User[], now: number = Date.now())
       const approved = approvePlayer(null, team, captain.id, player, tick(4))
       team = approved.team
     }
-    const entered = enterLeague(league, team, captain.id, teams, tick(3))
+    const entered = enterLeague(league, team, captain.id, teams, false, tick(3))
     team = entered.team
     audit = [...audit, ...entered.audit]
     teams.push(team)

@@ -1,5 +1,6 @@
 import type { AppState } from './store'
 import { LEGACY_STORAGE_KEYS, SCHEMA_VERSION, STORAGE_KEY, VERIFICATION } from '../core/config'
+import { newInviteCode } from '../core/ids'
 import { localStorageAdapter, type StorageAdapter } from '../adapters/storage'
 
 /**
@@ -77,6 +78,20 @@ const MIGRATIONS: Record<number, Migration> = {
   // v7 → v8: teams became independent of leagues (leagueId may now be null).
   // Existing teams keep the league they were created in — no data changes.
   7: (state) => state,
+  // v8 → v9: playoffs removed; leagues gained a join code. Drop any playoff
+  // matches and playoffFormat, and mint a join code for existing leagues.
+  8: (state) => {
+    const leagues = (state.leagues as Record<string, unknown>[] | undefined) ?? []
+    const matches = (state.matches as Record<string, unknown>[] | undefined) ?? []
+    return {
+      ...state,
+      leagues: leagues.map((l) => {
+        const { playoffFormat: _drop, ...rest } = l
+        return { ...rest, joinCode: (l.joinCode as string) ?? newInviteCode() }
+      }),
+      matches: matches.filter((m) => m.stage !== 'playoff'),
+    }
+  },
 }
 
 export function migrate(state: Record<string, unknown>, fromVersion: number): Record<string, unknown> | null {

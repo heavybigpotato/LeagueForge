@@ -5,7 +5,6 @@ import type { EvidenceKind } from '../core/types'
 import { EmptyState, TeamLogo, formatDate, formatTime, formatWhen } from './components'
 import { MatchBadge } from './LeagueScreen'
 import { Icon } from './icons'
-import { playoffLabel } from '../core/playoffs'
 import { rsvpCount } from '../core/match'
 import { shareResultCard } from './shareCards'
 import type { Match, Team } from '../core/types'
@@ -50,11 +49,7 @@ export function MatchScreen() {
 
       <div className="card flush fixture" style={{ marginTop: 12 }}>
         <div className="fixture-top">
-          {match.stage === 'playoff' ? (
-            <span style={{ color: 'var(--gold)', fontWeight: 800 }}>🏆 {playoffLabel(league.id, state.matches, match)}</span>
-          ) : (
-            <span>Round {match.round}</span>
-          )}
+          <span>Round {match.round}</span>
           <span>·</span>
           <span>{formatDate(match.scheduledAt)}, {formatTime(match.scheduledAt)}</span>
           <span>·</span>

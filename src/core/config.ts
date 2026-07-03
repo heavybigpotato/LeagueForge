@@ -7,7 +7,7 @@ import type { ScheduleFormat, Sport } from './types'
  */
 
 /** Bump when the persisted state shape changes; add a migration alongside. */
-export const SCHEMA_VERSION = 8
+export const SCHEMA_VERSION = 9
 
 /** Single source of truth for local persistence. */
 export const STORAGE_KEY = 'leagueforge-state'
@@ -72,14 +72,10 @@ export interface FormatInfo {
   description: string
 }
 
-/** League format registry. Unimplemented formats are visible but unselectable. */
+/** League format registry — every league is a table decided by verified results. */
 export const FORMATS: FormatInfo[] = [
-  { id: 'round-robin', label: 'Round robin', implemented: true, description: 'Everyone plays everyone once; playoffs optional.' },
+  { id: 'round-robin', label: 'Single round robin', implemented: true, description: 'Everyone plays everyone once.' },
   { id: 'double-round-robin', label: 'Double round robin', implemented: true, description: 'Home and away against every team.' },
-  { id: 'knockout', label: 'Knockout cup', implemented: true, description: 'The whole season is a single-elimination bracket.' },
-  { id: 'groups', label: 'Groups + knockout', implemented: false, description: 'Coming soon.' },
-  { id: 'swiss', label: 'Swiss system', implemented: false, description: 'Coming soon.' },
-  { id: 'ladder', label: 'Ladder', implemented: false, description: 'Coming soon.' },
 ]
 
 /** Route paths, centralized so navigation never uses stray strings. */
