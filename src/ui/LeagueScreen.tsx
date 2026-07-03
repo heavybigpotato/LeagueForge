@@ -11,10 +11,10 @@ import { Badge, EmptyState, FormPills, RosterProgress, TeamLogo, formatDate, for
 import type { League, SeasonRecord } from '../core/types'
 import { Icon, LeagueBadge } from './icons'
 import { LeagueCodeCard } from './LeagueCodeCard'
+import { CupBracket, LaunchCard } from './BracketView'
 
-// Three tabs, always: the Table, the Matches, and the Teams. Everything
-// rarer (past seasons, the activity log, commissioner settings) hangs off
-// links, not tabs.
+// A league shows Table · Matches · Teams; a cup collapses to Bracket · Teams.
+// Everything rarer (past seasons, activity log, settings) hangs off links.
 type Tab = 'main' | 'matches' | 'teams'
 
 export function LeagueScreen() {
@@ -25,26 +25,26 @@ export function LeagueScreen() {
   const league = state.leagues.find((l) => l.id === leagueId)
   if (!league) return <EmptyState icon="alert">League not found.</EmptyState>
 
+  const isCup = league.scheduleFormat === 'knockout'
   const teams = state.teams.filter((t) => t.leagueId === league.id)
   const official = teams.filter((t) => t.status === 'official')
   const matches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
   const verified = matches.filter((m) => m.status === 'official')
+  const launched = matches.length > 0
   const isCommissioner = currentUser.id === league.commissionerId
   const myTeam = teams.find((t) => t.memberIds.includes(currentUser.id))
-  // Free official teams this user captains — they can enter the league whole.
+  // Official free teams this user captains — they can register right here.
   const myFreeTeams = state.teams.filter(
-    (t) => t.captainId === currentUser.id && t.status === 'official' && t.leagueId === null,
+    (t) => t.captainId === currentUser.id && t.leagueId === null,
   )
   const goals = verified.reduce((sum, m) => sum + (m.result ? m.result.homeScore + m.result.awayScore : 0), 0)
   // Reigning champion = winner of the most recently archived season.
   const lastSeason = league.seasons[league.seasons.length - 1]
   const reigningChampion = teams.find((t) => t.id === lastSeason?.championTeamId)
 
-  const tabDefs: { key: Tab; label: string }[] = [
-    { key: 'main', label: 'Table' },
-    { key: 'matches', label: 'Matches' },
-    { key: 'teams', label: 'Teams' },
-  ]
+  const tabDefs: { key: Tab; label: string }[] = isCup
+    ? [{ key: 'main', label: 'Bracket' }, { key: 'teams', label: 'Teams' }]
+    : [{ key: 'main', label: 'Table' }, { key: 'matches', label: 'Matches' }, { key: 'teams', label: 'Teams' }]
   const activeTab = tabDefs.some((t) => t.key === tab) ? tab : 'main'
 
   return (
@@ -72,7 +72,7 @@ export function LeagueScreen() {
             <h1>{league.name}</h1>
             <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <Badge kind="volt">Season {league.currentSeason}</Badge>
-              <Badge kind="neutral">{league.privacy}</Badge>
+              <Badge kind="neutral">{isCup ? 'knockout cup' : league.privacy}</Badge>
               {isCommissioner && <Badge kind="volt">Commissioner</Badge>}
               {myTeam && !isCommissioner && <Badge kind="awaiting">{myTeam.name}</Badge>}
               {reigningChampion && <Badge kind="pending">🏆 {reigningChampion.name}</Badge>}
@@ -99,18 +99,25 @@ export function LeagueScreen() {
         ))}
       </div>
 
-      {activeTab === 'main' && (
-        <>
-          <Standings leagueId={league.id} />
-          <PastSeasons league={league} />
-        </>
-      )}
+      {activeTab === 'main' &&
+        (isCup ? (
+          <CupBracket league={league} />
+        ) : (
+          <>
+            {!launched && <LaunchCard league={league} />}
+            <Standings leagueId={league.id} />
+            <PastSeasons league={league} />
+          </>
+        ))}
 
       {activeTab === 'matches' && <MatchesTab league={league} />}
 
       {activeTab === 'teams' && (
         <div>
           <LeagueCodeCard league={league} />
+          {teams.length === 0 && (
+            <EmptyState icon="users">No teams registered yet. Share the code above to fill it up.</EmptyState>
+          )}
           {teams.map((t) => (
             <Link to={`/team/${t.id}`} key={t.id} className="card clickable">
               <div className="row">
@@ -118,29 +125,31 @@ export function LeagueScreen() {
                 <div className="grow">
                   <div className="row" style={{ gap: 8 }}>
                     <strong className="truncate">{t.name}</strong>
-                    <Badge kind={t.status === 'official' ? 'official' : 'pending'}>{t.status}</Badge>
+                    {t.status === 'official' ? <Badge kind="official">Ready</Badge> : <Badge kind="pending">Recruiting</Badge>}
                   </div>
                   <div className="faint">
-                    {t.memberIds.length} players · captain @{state.users.find((u) => u.id === t.captainId)?.username}
+                    captain @{state.users.find((u) => u.id === t.captainId)?.username}
+                    {t.status === 'official' ? ` · ${t.memberIds.length} players` : ''}
                   </div>
                 </div>
                 <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
               </div>
-              {t.status === 'pending' && (
+              {t.status !== 'official' && (
                 <div style={{ marginTop: 8 }}>
                   <RosterProgress current={t.memberIds.length} required={league.minPlayersPerTeam} />
                 </div>
               )}
             </Link>
           ))}
-          {myFreeTeams.map((t) => (
+          {!launched && myFreeTeams.map((t) => (
             <button key={t.id} className="btn primary" onClick={() => enterLeague(t.id, league.id)}>
-              <Icon name="shield" size={16} /> Enter with {t.name}
+              <Icon name="shield" size={16} /> Register {t.name}
+              {t.status !== 'official' ? ` (${t.memberIds.length}/${league.minPlayersPerTeam})` : ''}
             </button>
           ))}
           {!myTeam && myFreeTeams.length === 0 && (
             <Link to="/create-team" className="btn primary" style={{ textDecoration: 'none' }}>
-              <Icon name="plus" size={16} /> Create a Team
+              <Icon name="plus" size={16} /> Create a Team to register
             </Link>
           )}
         </div>
@@ -157,48 +166,17 @@ export function LeagueScreen() {
 
 /**
  * The Matches tab. The season doesn't start on its own — the commissioner
- * kicks it off with one button, which draws the fixtures and closes entry.
- * Until then teams keep registering.
+ * kicks it off from the launch card, which draws the fixtures and closes
+ * entry. Until then teams keep registering.
  */
 function MatchesTab({ league }: { league: League }) {
   const { state, currentUser, launchSeason } = useStore()
   const isCommissioner = currentUser.id === league.commissionerId
   const teams = state.teams.filter((t) => t.leagueId === league.id)
-  const official = teams.filter((t) => t.status === 'official')
   const fixtures = currentSeasonMatches(league, state.matches).slice().sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
   const launched = fixtures.length > 0
 
-  if (!launched) {
-    return (
-      <div>
-        <div className="card">
-          <div className="row" style={{ gap: 8 }}>
-            <span style={{ color: 'var(--volt)' }}><Icon name="calendar" size={17} /></span>
-            <div className="grow">
-              <strong>Season {league.currentSeason} hasn&rsquo;t started</strong>
-              <div className="faint">
-                {official.length} official team{official.length === 1 ? '' : 's'} registered
-                {official.length < 2 ? ' — 2 needed to kick off.' : '. Registration is open until kickoff.'}
-              </div>
-            </div>
-          </div>
-          {isCommissioner ? (
-            <button className="btn primary" style={{ marginTop: 12 }} disabled={official.length < 2} onClick={() => launchSeason(league.id)}>
-              <Icon name="trophy" size={16} /> Launch Season {league.currentSeason}
-            </button>
-          ) : (
-            <p className="faint" style={{ marginBottom: 0 }}>The commissioner starts the season once teams are in.</p>
-          )}
-        </div>
-        {isCommissioner && official.length >= 2 && (
-          <p className="faint" style={{ display: 'flex', gap: 8 }}>
-            <Icon name="alert" size={14} />
-            <span>Launching draws the fixtures and locks the team list for this season.</span>
-          </p>
-        )}
-      </div>
-    )
-  }
+  if (!launched) return <LaunchCard league={league} />
 
   return (
     <div>

@@ -69,49 +69,59 @@ export function TeamScreen() {
         {team.bio && <p className="muted" style={{ marginBottom: 0 }}>{team.bio}</p>}
       </div>
 
-      {team.status === 'pending' ? (
+      {league ? (
         <div className="card">
           <div className="row" style={{ gap: 8 }}>
-            <span style={{ color: 'var(--volt)' }}><Icon name="gauge" size={17} /></span>
-            <strong>Road to activation</strong>
-          </div>
-          <RosterProgress current={team.memberIds.length} required={bounds.min} />
-          <p className="faint" style={{ marginBottom: 0 }}>
-            Official at {bounds.min} verified players — automatic, no paperwork.
-          </p>
-        </div>
-      ) : league ? (
-        <div className="card">
-          <div className="row" style={{ gap: 8 }}>
-            <span style={{ color: 'var(--green)' }}><Icon name="shieldCheck" size={17} /></span>
+            <span style={{ color: team.status === 'official' ? 'var(--green)' : 'var(--volt)' }}>
+              <Icon name={team.status === 'official' ? 'shieldCheck' : 'gauge'} size={17} />
+            </span>
             <div className="grow">
-              <strong>Playing in <Link to={`/league/${league.id}`} style={{ color: 'var(--volt)' }}>{league.name}</Link></strong>
+              <strong>
+                {hasFixturesThisSeason ? 'Playing in ' : 'Registered for '}
+                <Link to={`/league/${league.id}`} style={{ color: 'var(--volt)' }}>{league.name}</Link>
+              </strong>
               <div className="faint">
-                Official since {team.activatedAt ? new Date(team.activatedAt).toLocaleDateString() : 'activation'} · Season {league.currentSeason}
+                {team.status === 'official'
+                  ? `Ready · ${team.memberIds.length} players · Season ${league.currentSeason}`
+                  : `Recruiting — reach ${bounds.min} players to be ready for kickoff`}
               </div>
             </div>
           </div>
+          {team.status !== 'official' && (
+            <div style={{ marginTop: 10 }}>
+              <RosterProgress current={team.memberIds.length} required={bounds.min} />
+            </div>
+          )}
           {isCaptain && !hasFixturesThisSeason && (
             <button
               className="btn small danger"
               style={{ marginTop: 12 }}
               onClick={() => {
-                if (window.confirm(`Leave ${league.name}? The team stays together and can join another league.`)) leaveLeague(team.id)
+                if (window.confirm(`Withdraw from ${league.name}? The team stays together and can register elsewhere.`)) leaveLeague(team.id)
               }}
             >
-              Leave league
+              Withdraw from league
             </button>
           )}
         </div>
       ) : (
         <div className="card">
           <div className="row" style={{ gap: 8 }}>
-            <span style={{ color: 'var(--volt)' }}><Icon name="trophy" size={17} /></span>
+            <span style={{ color: 'var(--volt)' }}><Icon name={team.status === 'official' ? 'trophy' : 'gauge'} size={17} /></span>
             <div className="grow">
-              <strong>Ready for a league</strong>
-              <div className="faint">{team.memberIds.length} verified players, no competition yet.</div>
+              <strong>{team.status === 'official' ? 'Ready for a league' : 'Building the squad'}</strong>
+              <div className="faint">
+                {team.status === 'official'
+                  ? `${team.memberIds.length} verified players — register anywhere.`
+                  : `${team.memberIds.length}/${bounds.min} players. You can register for a league now and recruit the rest.`}
+              </div>
             </div>
           </div>
+          {team.status !== 'official' && (
+            <div style={{ marginTop: 10 }}>
+              <RosterProgress current={team.memberIds.length} required={bounds.min} />
+            </div>
+          )}
           {isCaptain && <JoinLeagueBox teamId={team.id} />}
         </div>
       )}

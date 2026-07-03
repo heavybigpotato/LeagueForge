@@ -3,6 +3,7 @@ import type { League, Match, Team, User } from './types'
 import { PLATFORM_MIN_PLAYERS } from './types'
 import { createLeague } from './league'
 import { approvePlayer, createTeam, enterLeague, leaveLeague, removePlayer, requestJoin, resolveMinPlayers } from './team'
+import { advanceCup, cupStarted, drawCup } from './knockout'
 import { generateRoundRobin } from './schedule'
 import { checkIn, confirmScore, disputeScore, resolveDispute, rsvp, rsvpCount, submitScore } from './match'
 import { powerRankings } from './powerRankings'
@@ -205,37 +206,38 @@ describe('team lifecycle: standalone creation → official → league entry', ()
     expect(() => approvePlayer(null, team, p.id, p)).toThrow(/Only the team captain/)
   })
 
-  it('captains enter a league with a complete official team; the roster locks per league policy', () => {
+  it('a team can register while still recruiting; registration never locks the roster', () => {
     const league = makeLeague(makeUser()) // no transfers
-    const { team, captain } = buildFreeTeam('Entrants FC')
-    // pending teams and non-captains stay out
-    const stillPending = createTeam(makeUser(), { name: 'Half Built', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [team]).team
-    expect(() => enterLeague(league, stillPending, stillPending.captainId, [])).toThrow(/official teams/)
-    expect(() => enterLeague(league, team, makeUser().id, [])).toThrow(/captain/)
+    // A brand-new, still-recruiting team can register right away.
+    const half = createTeam(makeUser(), { name: 'Half Built', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []).team
+    const registered = enterLeague(league, half, half.captainId, [])
+    expect(registered.team.leagueId).toBe(league.id)
+    expect(registered.team.status).toBe('pending')
+    expect(registered.team.rosterLocked).toBe(false) // locks only at kickoff
 
-    const entered = enterLeague(league, team, captain.id, []).team
+    // non-captains still can't register the team
+    const { team, captain } = buildFreeTeam('Entrants FC')
+    expect(() => enterLeague(league, team, makeUser().id, [registered.team])).toThrow(/captain/)
+
+    const entered = enterLeague(league, team, captain.id, [registered.team]).team
     expect(entered.leagueId).toBe(league.id)
-    expect(entered.rosterLocked).toBe(true) // league does not allow transfers
-    // no double-entry
-    expect(() => enterLeague(league, entered, captain.id, [entered])).toThrow(/already in this league/)
+    expect(entered.rosterLocked).toBe(false)
+    // no double-entry, and not while already in another league
+    expect(() => enterLeague(league, entered, captain.id, [entered])).toThrow(/already registered/)
     const otherLeague = makeLeague(makeUser())
     expect(() => enterLeague(otherLeague, entered, captain.id, [entered])).toThrow(/another league/)
   })
 
-  it('league entry enforces capacity, roster bounds, and one team per player', () => {
-    const league = makeLeague(makeUser(), { minTeams: 2, maxTeams: 2, minPlayersPerTeam: 12 })
+  it('registration enforces capacity and one team per player', () => {
+    const league = makeLeague(makeUser(), { minTeams: 2, maxTeams: 2 })
     const teams: Team[] = []
     for (const name of ['Cap A', 'Cap B']) teams.push(buildOfficialTeam(league, name, teams).team)
 
     // full league turns the next team away
-    const third = buildFreeTeam('Cap C', teams, 12)
+    const third = buildFreeTeam('Cap C', teams)
     expect(() => enterLeague(league, third.team, third.captain.id, teams)).toThrow(/full/)
 
-    // roster below the league's (higher) minimum is rejected
-    const small = buildFreeTeam('Small Squad', teams) // 11 players, league wants 12
-    expect(() => enterLeague(makeLeague(makeUser(), { minPlayersPerTeam: 12 }), small.team, small.captain.id, [])).toThrow(/at least 12/)
-
-    // a player on a league team blocks their other team from entering it
+    // a player on a league team blocks their other team from registering
     const spare = makeLeague(makeUser(), { maxTeams: 8 })
     const inLeague = buildOfficialTeam(spare, 'First Club', [])
     let poached = buildFreeTeam('Second Club', [inLeague.team]).team
@@ -454,6 +456,74 @@ describe('season launch and league join codes', () => {
     expect(pending.status).toBe('awaiting-confirmation')
     const { match: official } = confirmScore(league, pending, away.team, away.captain)
     expect(official.result).toMatchObject({ homeScore: 1, awayScore: 1 })
+  })
+})
+
+describe('knockout cups', () => {
+  function officialize(m: Match, h: number, a: number): Match {
+    return { ...m, status: 'official', result: { homeScore: h, awayScore: a, verifiedAt: 1, verifiedBy: 'captains' } }
+  }
+
+  it('a cup needs a power-of-two field and seeds a clean bracket', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C']) teams.push(buildOfficialTeam(league, name, teams).team)
+    expect(() => drawCup(league, teams, commissioner.id)).toThrow(/2, 4, 8, or 16/)
+    expect(() => drawCup(league, teams.slice(0, 2), makeUser().id)).toThrow(/commissioner/)
+
+    const four = [...teams, buildOfficialTeam(league, 'D', teams).team]
+    const { matches: round1, audit } = drawCup(league, four, commissioner.id)
+    expect(round1).toHaveLength(2)
+    expect(round1.every((m) => m.stage === 'playoff' && m.playoffRound === 1 && m.season === 1)).toBe(true)
+    expect(cupStarted(league.id, round1)).toBe(true)
+    expect(audit[0].action).toBe('playoffs.started')
+  })
+
+  it('a cup tie cannot end level', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
+    const teams: Team[] = []
+    for (const name of ['A', 'B']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const { matches } = drawCup(league, teams, commissioner.id)
+    const home = teams.find((t) => t.id === matches[0].homeTeamId)!
+    const cap = makeUser({ id: home.captainId })
+    expect(() => submitScore(league, matches[0], home, cap, 1, 1)).toThrow(/cannot end level/)
+  })
+
+  it('winners advance and the final decides the champion', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C', 'D']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const { matches: semis } = drawCup(league, teams, commissioner.id)
+    let all = [...semis]
+
+    expect(advanceCup(league, all, commissioner.id).matches).toHaveLength(0)
+    all = all.map((m) => officialize(m, m.playoffSlot === 0 ? 2 : 0, m.playoffSlot === 0 ? 1 : 2))
+    const adv = advanceCup(league, all, commissioner.id)
+    expect(adv.matches).toHaveLength(1)
+    const final = adv.matches[0]
+    expect(final.playoffRound).toBe(2)
+    expect(adv.championTeamId).toBeUndefined()
+
+    all = [...all, officialize(final, 3, 0)]
+    const done = advanceCup(league, all, commissioner.id)
+    expect(done.matches).toHaveLength(0)
+    expect(done.championTeamId).toBe(final.homeTeamId)
+
+    // ending a cup season crowns the bracket winner
+    const ended = endSeason(league, teams, all, commissioner.id)
+    expect(ended.league.seasons[0].championTeamId).toBe(final.homeTeamId)
+  })
+
+  it('a cup season cannot be ended before the final is decided', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
+    const teams: Team[] = []
+    for (const name of ['A', 'B']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const { matches } = drawCup(league, teams, commissioner.id)
+    expect(() => endSeason(league, teams, matches, commissioner.id)).toThrow(/Finish the cup/)
   })
 })
 

@@ -40,9 +40,10 @@ export function isVerifiedUser(u: User): boolean {
 export type LeaguePrivacy = 'public' | 'private' | 'invite-only'
 
 export type ScheduleFormat =
+  /** Everyone plays everyone once; a table decides the champion. */
   | 'round-robin'
-  /** Home and away against every team. */
-  | 'double-round-robin'
+  /** Single-elimination cup; last team standing wins. */
+  | 'knockout'
 
 /** Frozen record of a completed season. */
 export interface SeasonRecord {
@@ -185,6 +186,8 @@ export interface Evidence {
   kind: EvidenceKind
   uploadedBy: Id
   note: string
+  /** Inline image (downscaled data URL) for photo/score-sheet evidence. */
+  dataUrl?: string
   at: number
 }
 

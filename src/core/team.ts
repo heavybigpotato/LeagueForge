@@ -179,9 +179,10 @@ export function removePlayer(
 }
 
 /**
- * The captain enters their official team into a league. The league sets the
- * bar — capacity, roster size, no player on two teams — and the roster locks
- * for the season if the league doesn't allow transfers.
+ * The captain registers their team for a league. A team can register while
+ * it's still recruiting — it just can't take the field until it's official
+ * (the roster minimum) and the commissioner launches the season. Registration
+ * closes once the season kicks off.
  */
 export function enterLeague(
   league: League,
@@ -192,22 +193,16 @@ export function enterLeague(
   seasonLaunched = false,
   now: number = Date.now(),
 ): { team: Team; audit: AuditEntry[] } {
-  if (actorId !== team.captainId) throw new Error('Only the team captain can enter a league.')
-  if (team.leagueId === league.id) throw new Error(`"${team.name}" is already in this league.`)
+  if (actorId !== team.captainId) throw new Error('Only the team captain can register the team.')
+  if (team.leagueId === league.id) throw new Error(`"${team.name}" is already registered here.`)
   if (team.leagueId !== null) throw new Error(`"${team.name}" already plays in another league. Leave it first.`)
-  if (team.status !== 'official') {
-    throw new Error(`Only official teams can enter a league — you need ${PLATFORM_MIN_PLAYERS} verified players first.`)
-  }
   if (seasonLaunched) {
-    throw new Error(`${league.name} has already kicked off Season ${league.currentSeason}. You can enter next season.`)
+    throw new Error(`${league.name} has already kicked off Season ${league.currentSeason}. You can register next season.`)
   }
   const current = allTeams.filter((t) => t.leagueId === league.id)
   if (current.length >= league.maxTeams) throw new Error(`${league.name} is full (${league.maxTeams} teams).`)
   if (current.some((t) => t.name.toLowerCase() === team.name.toLowerCase())) {
-    throw new Error('A team with this name already plays in this league.')
-  }
-  if (team.memberIds.length < league.minPlayersPerTeam) {
-    throw new Error(`${league.name} requires at least ${league.minPlayersPerTeam} players — you have ${team.memberIds.length}.`)
+    throw new Error('A team with this name is already registered here.')
   }
   if (team.memberIds.length > league.maxPlayersPerTeam) {
     throw new Error(`${league.name} allows at most ${league.maxPlayersPerTeam} players — you have ${team.memberIds.length}.`)
@@ -217,12 +212,24 @@ export function enterLeague(
       throw new Error(`Someone on your roster is already on "${t.name}" in this league.`)
     }
   }
+  // Registration never locks the roster — teams keep recruiting until kickoff.
+  const need = team.status === 'official' ? '' : ` (${team.memberIds.length}/${league.minPlayersPerTeam} players — still recruiting)`
   return {
-    team: { ...team, leagueId: league.id, rosterLocked: !league.allowTransfers },
+    team: { ...team, leagueId: league.id },
     audit: [
-      auditEntry(league.id, actorId, 'team.entered-league', `"${team.name}" entered ${league.name} with ${team.memberIds.length} verified players.`, now),
+      auditEntry(league.id, actorId, 'team.entered-league', `"${team.name}" registered for ${league.name}${need}.`, now),
     ],
   }
+}
+
+/** Teams registered in a league that are ready to play (official). */
+export function readyTeams(teams: Team[], leagueId: string): Team[] {
+  return teams.filter((t) => t.leagueId === leagueId && t.status === 'official')
+}
+
+/** Registered teams still short of the roster minimum. */
+export function recruitingTeams(teams: Team[], leagueId: string): Team[] {
+  return teams.filter((t) => t.leagueId === leagueId && t.status !== 'official')
 }
 
 /**

@@ -36,6 +36,9 @@ export function submitScore(
   if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
     throw new Error('Scores must be non-negative whole numbers.')
   }
+  if (match.stage === 'playoff' && homeScore === awayScore) {
+    throw new Error('A cup tie cannot end level — play it out until there is a winner.')
+  }
   return {
     match: {
       ...match,
@@ -90,6 +93,9 @@ export function resolveDispute(
   if (resolver.id !== league.commissionerId && !isReferee) {
     throw new Error('Only the commissioner or an assigned referee can resolve disputes.')
   }
+  if (match.stage === 'playoff' && homeScore === awayScore) {
+    throw new Error('A cup tie cannot be resolved as a draw — record a winner.')
+  }
   return {
     match: {
       ...match,
@@ -102,11 +108,21 @@ export function resolveDispute(
   }
 }
 
-export function addEvidence(league: League, match: Match, uploader: User, kind: EvidenceKind, note: string, now: number = Date.now()): MatchEvent {
-  const evidence: Evidence = { id: newId('ev'), kind, uploadedBy: uploader.id, note, at: now }
+export function addEvidence(
+  league: League,
+  match: Match,
+  uploader: User,
+  kind: EvidenceKind,
+  note: string,
+  dataUrl?: string,
+  now: number = Date.now(),
+): MatchEvent {
+  if (!note.trim() && !dataUrl) throw new Error('Add a photo or a note.')
+  const evidence: Evidence = { id: newId('ev'), kind, uploadedBy: uploader.id, note: note.trim(), dataUrl, at: now }
+  const label = dataUrl ? 'a photo' : `${kind} evidence`
   return {
     match: { ...match, evidence: [...match.evidence, evidence] },
-    audit: [auditEntry(league.id, uploader.id, 'match.evidence-added', `@${uploader.username} uploaded ${kind} evidence: ${note}`, now)],
+    audit: [auditEntry(league.id, uploader.id, 'match.evidence-added', `@${uploader.username} added ${label}${note.trim() ? `: ${note.trim()}` : ''}.`, now)],
   }
 }
 

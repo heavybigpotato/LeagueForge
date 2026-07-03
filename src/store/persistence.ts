@@ -92,6 +92,15 @@ const MIGRATIONS: Record<number, Migration> = {
       matches: matches.filter((m) => m.stage !== 'playoff'),
     }
   },
+  // v9 → v10: knockout returns as a mode; double round robin is gone.
+  // Fold any double-round-robin leagues back to a single round robin.
+  9: (state) => {
+    const leagues = (state.leagues as Record<string, unknown>[] | undefined) ?? []
+    return {
+      ...state,
+      leagues: leagues.map((l) => (l.scheduleFormat === 'double-round-robin' ? { ...l, scheduleFormat: 'round-robin' } : l)),
+    }
+  },
 }
 
 export function migrate(state: Record<string, unknown>, fromVersion: number): Record<string, unknown> | null {
