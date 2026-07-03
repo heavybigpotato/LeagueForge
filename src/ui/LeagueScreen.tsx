@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { computeStandings, formGuide } from '../core/standings'
-import { bracket, bracketSize, playoffLabel } from '../core/playoffs'
+import { bracket, bracketSize, playoffLabel, playoffsStarted } from '../core/playoffs'
 import { powerRankings } from '../core/powerRankings'
+import { ROUTES } from '../core/config'
 import { shareStandingsCard } from './shareCards'
 import type { Match, Team } from '../core/types'
 import { Badge, EmptyState, FormPills, RosterProgress, TeamLogo, formatDate, formatWhen } from './components'
@@ -11,20 +12,16 @@ import type { League, SeasonRecord } from '../core/types'
 import { Icon, LeagueBadge } from './icons'
 import { PlayoffsTab } from './BracketView'
 
-type Tab = 'standings' | 'schedule' | 'playoffs' | 'teams' | 'history' | 'log'
-const TAB_LABELS: Record<Tab, string> = {
-  standings: 'Standings',
-  schedule: 'Schedule',
-  playoffs: 'Playoffs',
-  teams: 'Teams',
-  history: 'History',
-  log: 'Audit Log',
-}
+// Three tabs, at most. 'main' is the Table (or the Bracket for a cup);
+// 'matches' folds in fixtures, results, and the playoff bracket; 'teams'
+// is the roster of clubs. Everything rarer (season history, the activity
+// log, commissioner settings) hangs off links, not tabs.
+type Tab = 'main' | 'matches' | 'teams'
 
 export function LeagueScreen() {
   const { leagueId } = useParams()
-  const { state, currentUser, generateSchedule, enterLeague } = useStore()
-  const [tab, setTab] = useState<Tab>('standings')
+  const { state, currentUser, enterLeague } = useStore()
+  const [tab, setTab] = useState<Tab>('main')
 
   const league = state.leagues.find((l) => l.id === leagueId)
   if (!league) return <EmptyState icon="alert">League not found.</EmptyState>
@@ -43,6 +40,11 @@ export function LeagueScreen() {
   const champion = teams.find((t) => t.id === bracket(league.id, state.matches, league.currentSeason)?.championTeamId)
   const isKnockout = league.scheduleFormat === 'knockout'
 
+  const tabDefs: { key: Tab; label: string }[] = isKnockout
+    ? [{ key: 'main', label: 'Bracket' }, { key: 'teams', label: 'Teams' }]
+    : [{ key: 'main', label: 'Table' }, { key: 'matches', label: 'Matches' }, { key: 'teams', label: 'Teams' }]
+  const activeTab = tabDefs.some((t) => t.key === tab) ? tab : 'main'
+
   return (
     <div>
       <Link to="/" className="backlink"><Icon name="arrowLeft" size={15} /> Home</Link>
@@ -57,7 +59,7 @@ export function LeagueScreen() {
           <div className="grow" style={{ position: 'relative' }}>
             {isCommissioner && (
               <Link
-                to={`/league/${league.id}/settings`}
+                to={ROUTES.leagueSettings(league.id)}
                 aria-label="League settings"
                 style={{ position: 'absolute', right: 0, top: 0, color: 'var(--muted)' }}
               >
@@ -88,50 +90,26 @@ export function LeagueScreen() {
       {isCommissioner && <SetupChecklist league={league} />}
 
       <div className="tabs">
-        {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'playoffs' && isKnockout ? 'Bracket' : TAB_LABELS[t]}
+        {tabDefs.map((t) => (
+          <button key={t.key} className={activeTab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'standings' &&
+      {activeTab === 'main' &&
         (isKnockout ? (
-          <EmptyState icon="trophy">It&rsquo;s a cup — no table. The story is in the Bracket tab.</EmptyState>
+          <PlayoffsTab league={league} />
         ) : (
-          <Standings leagueId={league.id} />
+          <>
+            <Standings leagueId={league.id} />
+            <PastSeasons league={league} />
+          </>
         ))}
 
-      {tab === 'history' && <SeasonHistory league={league} />}
+      {activeTab === 'matches' && <MatchesTab league={league} />}
 
-      {tab === 'playoffs' && <PlayoffsTab league={league} />}
-
-      {tab === 'schedule' && (
-        <div>
-          {matches.length === 0 ? (
-            <EmptyState icon="calendar">
-              {isCommissioner ? 'Two official teams and you can generate the schedule.' : 'No fixtures yet.'}
-            </EmptyState>
-          ) : (
-            matches
-              .slice()
-              .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
-              .map((m) => <MatchCard key={m.id} match={m} teams={teams} />)
-          )}
-          {isCommissioner && (
-            <button className="btn" onClick={() => generateSchedule(league.id)}>
-              <Icon name="calendar" size={16} />{' '}
-              {isKnockout
-                ? 'Draw the cup bracket'
-                : matches.length
-                  ? 'Regenerate remaining fixtures'
-                  : `Generate Season ${league.currentSeason} schedule`}
-            </button>
-          )}
-        </div>
-      )}
-
-      {tab === 'teams' && (
+      {activeTab === 'teams' && (
         <div>
           {teams.map((t) => (
             <Link to={`/team/${t.id}`} key={t.id} className="card clickable">
@@ -168,7 +146,45 @@ export function LeagueScreen() {
         </div>
       )}
 
-      {tab === 'log' && <AuditLog leagueId={league.id} />}
+      <Link to={ROUTES.leagueActivity(league.id)} className="listlink" style={{ marginTop: 18, borderRadius: 14 }}>
+        <span style={{ color: 'var(--muted)' }}><Icon name="scroll" size={16} /></span>
+        <span className="grow faint">Activity log</span>
+        <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
+      </Link>
+    </div>
+  )
+}
+
+/** The Matches tab: fixtures and results, with the playoff bracket folded in. */
+function MatchesTab({ league }: { league: League }) {
+  const { state, currentUser, generateSchedule } = useStore()
+  const isCommissioner = currentUser.id === league.commissionerId
+  const teams = state.teams.filter((t) => t.leagueId === league.id)
+  const seasonMatches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
+  const regular = seasonMatches.filter((m) => m.stage !== 'playoff').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+  const playoffsOn = playoffsStarted(league.id, state.matches, league.currentSeason)
+
+  return (
+    <div>
+      {playoffsOn && <PlayoffsTab league={league} embedded />}
+
+      {regular.length > 0 && playoffsOn && <h2>Regular season</h2>}
+      {regular.length === 0 ? (
+        <EmptyState icon="calendar">
+          {isCommissioner ? 'Two official teams and you can generate the schedule.' : 'No fixtures yet.'}
+        </EmptyState>
+      ) : (
+        regular.map((m) => <MatchCard key={m.id} match={m} teams={teams} />)
+      )}
+
+      {isCommissioner && (
+        <button className="btn" onClick={() => generateSchedule(league.id)}>
+          <Icon name="calendar" size={16} />{' '}
+          {regular.length ? 'Regenerate remaining fixtures' : `Generate Season ${league.currentSeason} schedule`}
+        </button>
+      )}
+
+      {!playoffsOn && <PlayoffsTab league={league} embedded />}
     </div>
   )
 }
@@ -324,28 +340,6 @@ export function MatchBadge({ status }: { status: Match['status'] }) {
   }
 }
 
-function AuditLog({ leagueId }: { leagueId: string }) {
-  const { state } = useStore()
-  const entries = state.auditLog.filter((e) => e.leagueId === leagueId).slice().reverse()
-  return (
-    <div className="card">
-      <div className="row" style={{ marginBottom: 12 }}>
-        <span style={{ color: 'var(--volt)' }}><Icon name="scroll" size={17} /></span>
-        <span className="faint">Every action in this league, on the record. Nothing gets edited or deleted.</span>
-      </div>
-      <div className="audit">
-        {entries.map((e, i) => (
-          <div className={`entry${i < 3 ? ' hot' : ''}`} key={e.id}>
-            <div className="when">{formatWhen(e.at)}</div>
-            <div className="what">{e.detail}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-
 /** Commissioner bulletin board — latest news pinned under the hero. */
 function Announcements({ league, isCommissioner }: { league: League; isCommissioner: boolean }) {
   const { state, postAnnouncement } = useStore()
@@ -404,23 +398,36 @@ function Announcements({ league, isCommissioner }: { league: League; isCommissio
   )
 }
 
-/** Archived seasons: champions, table leaders, and final tables. */
-function SeasonHistory({ league }: { league: League }) {
+/**
+ * Past seasons live right under the current table — champions, table
+ * leaders, and final standings, collapsed by default so they never crowd
+ * the live season.
+ */
+function PastSeasons({ league }: { league: League }) {
   const { state } = useStore()
+  const [open, setOpen] = useState(false)
   const teams = state.teams.filter((t) => t.leagueId === league.id)
   const teamOf = (id?: string) => teams.find((t) => t.id === id)
   const records = league.seasons.slice().reverse()
-  if (records.length === 0) {
-    return (
-      <EmptyState icon="scroll">Season {league.currentSeason} is still being written. Finished seasons live here forever.</EmptyState>
-    )
-  }
+  if (records.length === 0) return null
   return (
-    <div>
-      {records.map((rec) => (
-        <SeasonCard key={rec.season} record={rec} teamOf={teamOf} />
-      ))}
-    </div>
+    <>
+      <button
+        className="row"
+        style={{ width: '100%', background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: '18px 2px 6px', gap: 8 }}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span style={{ color: 'var(--gold)' }}><Icon name="scroll" size={16} /></span>
+        <strong className="grow" style={{ textAlign: 'left', fontSize: 15 }}>
+          Past seasons ({records.length})
+        </strong>
+        <span style={{ color: 'var(--faint)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
+          <Icon name="chevronRight" size={16} />
+        </span>
+      </button>
+      {open && records.map((rec) => <SeasonCard key={rec.season} record={rec} teamOf={teamOf} />)}
+    </>
   )
 }
 
