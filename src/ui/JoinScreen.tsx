@@ -73,7 +73,7 @@ function PendingRequests() {
               <span style={{ color: 'var(--blue)' }}><Icon name="clock" size={16} /></span>
               <div className="grow">
                 <strong>{t.name}</strong>
-                <div className="faint">{league?.name} · waiting for the captain to approve you</div>
+                <div className="faint">{league ? `${league.name} · ` : ''}waiting for the captain to approve you</div>
               </div>
             </div>
           </div>

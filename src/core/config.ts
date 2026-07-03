@@ -7,7 +7,7 @@ import type { ScheduleFormat, Sport } from './types'
  */
 
 /** Bump when the persisted state shape changes; add a migration alongside. */
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 /** Single source of truth for local persistence. */
 export const STORAGE_KEY = 'leagueforge-state'
@@ -88,7 +88,8 @@ export const ROUTES = {
   createLeague: '/create-league',
   league: (id = ':leagueId') => `/league/${id}`,
   leagueSettings: (id = ':leagueId') => `/league/${id}/settings`,
-  createTeam: (id = ':leagueId') => `/league/${id}/create-team`,
+  createTeam: '/create-team',
+  discover: '/discover',
   team: (id = ':teamId') => `/team/${id}`,
   match: (id = ':matchId') => `/match/${id}`,
   matchLive: (id = ':matchId') => `/match/${id}/live`,

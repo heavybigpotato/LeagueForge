@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, useReducer, type ReactNode } from 'react'
 import type { AuditEntry, League, Match, Team, User } from '../core/types'
 import { createLeague, postAnnouncement, setReferee, updateLeague, type CreateLeagueInput, type UpdateLeagueInput } from '../core/league'
-import { approvePlayer, createPendingTeam, officialTeams, requestJoin } from '../core/team'
+import { approvePlayer, createTeam, enterLeague, leaveLeague, officialTeams, requestJoin } from '../core/team'
+import { PLATFORM_MIN_PLAYERS } from '../core/types'
 import { generateRoundRobin } from '../core/schedule'
 import { addEvidence, checkIn, confirmScore, disputeScore, rescheduleMatch, resolveDispute, rsvp, submitScore } from '../core/match'
 import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
@@ -102,7 +103,13 @@ export interface StoreApi {
   endSeason(leagueId: string): void
   dismiss(id: number): void
   createLeague(input: CreateLeagueInput): League | undefined
-  createTeam(leagueId: string, input: { name: string; logo: string; primaryColor: string; secondaryColor: string; bio: string }): Team | undefined
+  createTeam(input: { name: string; logo: string; primaryColor: string; secondaryColor: string; bio: string }): Team | undefined
+  /** Captain enters their official team into a league. */
+  enterLeague(teamId: string, leagueId: string): boolean
+  /** Captain (or commissioner) withdraws a team — between seasons only. */
+  leaveLeague(teamId: string): void
+  /** Commissioner deletes the league; its teams live on as free agents. */
+  deleteLeague(leagueId: string): boolean
   joinByCode(code: string): Team | undefined
   approvePlayer(teamId: string, playerId: string): void
   generateSchedule(leagueId: string): void
@@ -382,13 +389,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
 
-      createTeam: (leagueId, input) => {
+      createTeam: (input) => {
         try {
-          const league = leagueOf(leagueId)
-          const { team, audit } = createPendingTeam(league, currentUser, input, state.teams)
+          const { team, audit } = createTeam(currentUser, input, state.teams)
           commit(
             { ...state, teams: [...state.teams, team], auditLog: [...state.auditLog, ...audit] },
-            `Pending team "${team.name}" created. Share invite code ${team.inviteCode} — you need ${league.minPlayersPerTeam} players to activate.`,
+            `"${team.name}" is yours. Share code ${team.inviteCode} — at ${PLATFORM_MIN_PLAYERS} verified players you go official.`,
           )
           return team
         } catch (e) {
@@ -396,11 +402,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
 
+      enterLeague: (teamId, leagueId) => {
+        try {
+          const team = state.teams.find((t) => t.id === teamId)
+          if (!team) throw new Error('Team not found.')
+          const league = leagueOf(leagueId)
+          const { team: next, audit } = enterLeague(league, team, currentUser.id, state.teams)
+          commit(
+            { ...state, teams: state.teams.map((t) => (t.id === next.id ? next : t)), auditLog: [...state.auditLog, ...audit] },
+            `"${team.name}" entered ${league.name}. See you on the schedule.`,
+          )
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
+      leaveLeague: (teamId) => {
+        try {
+          const team = state.teams.find((t) => t.id === teamId)
+          if (!team) throw new Error('Team not found.')
+          if (!team.leagueId) throw new Error('This team is not in a league.')
+          const league = leagueOf(team.leagueId)
+          const { team: next, audit } = leaveLeague(league, team, currentUser.id, state.matches)
+          commit(
+            { ...state, teams: state.teams.map((t) => (t.id === next.id ? next : t)), auditLog: [...state.auditLog, ...audit] },
+            `"${team.name}" left ${league.name} — free to join another league.`,
+            'info',
+          )
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      deleteLeague: (leagueId) => {
+        try {
+          const league = leagueOf(leagueId)
+          if (currentUser.id !== league.commissionerId) throw new Error('Only the commissioner can delete the league.')
+          commit(
+            {
+              ...state,
+              leagues: state.leagues.filter((l) => l.id !== leagueId),
+              // Teams survive their league: they keep name, roster, and status.
+              teams: state.teams.map((t) => (t.leagueId === leagueId ? { ...t, leagueId: null, rosterLocked: false } : t)),
+              matches: state.matches.filter((m) => m.leagueId !== leagueId),
+              auditLog: state.auditLog.filter((a) => a.leagueId !== leagueId),
+            },
+            `"${league.name}" deleted. Its teams live on as free agents.`,
+            'info',
+          )
+          return true
+        } catch (e) {
+          fail(e)
+          return false
+        }
+      },
+
       joinByCode: (code) => {
         try {
           const team = state.teams.find((t) => t.inviteCode.toUpperCase() === code.trim().toUpperCase())
           if (!team) throw new Error('No team found for this invite code.')
-          const league = leagueOf(team.leagueId)
+          const league = team.leagueId ? leagueOf(team.leagueId) : null
           const { team: next, audit } = requestJoin(league, team, currentUser, state.teams)
           commit(
             { ...state, teams: state.teams.map((t) => (t.id === next.id ? next : t)), auditLog: [...state.auditLog, ...audit] },
@@ -416,15 +479,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const team = state.teams.find((t) => t.id === teamId)
           if (!team) throw new Error('Team not found.')
-          const league = leagueOf(team.leagueId)
+          const league = team.leagueId ? leagueOf(team.leagueId) : null
           const player = state.users.find((u) => u.id === playerId)
           if (!player) throw new Error('Player not found.')
           const event = approvePlayer(league, team, currentUser.id, player)
+          const required = league?.minPlayersPerTeam ?? PLATFORM_MIN_PLAYERS
           commit(
             { ...state, teams: state.teams.map((t) => (t.id === event.team.id ? event.team : t)), auditLog: [...state.auditLog, ...event.audit] },
             event.activated
-              ? `🎉 Congratulations! "${team.name}" is now officially registered in ${league.name}. The commissioner has been notified.`
-              : `@${player.username} approved (${event.team.memberIds.length}/${league.minPlayersPerTeam}).`,
+              ? league
+                ? `🎉 "${team.name}" is now officially registered in ${league.name}.`
+                : `🎉 "${team.name}" is official — ${event.team.memberIds.length} verified players. Time to find a league.`
+              : `@${player.username} approved (${event.team.memberIds.length}/${required}).`,
           )
         } catch (e) {
           fail(e)

@@ -2,7 +2,7 @@ import type { AppState } from './store'
 import type { AuditEntry, League, Match, Team, User } from '../core/types'
 import { createAccount, verifyEmail, verifyPhone } from '../core/account'
 import { createLeague } from '../core/league'
-import { approvePlayer, createPendingTeam, requestJoin } from '../core/team'
+import { approvePlayer, createTeam, enterLeague, requestJoin } from '../core/team'
 import { generateRoundRobin } from '../core/schedule'
 import { addEvidence, confirmScore, disputeScore, submitScore } from '../core/match'
 import { DEMO_PASSWORD } from '../core/config'
@@ -102,24 +102,25 @@ export function buildGuidedDemo(existingUsers: User[], now: number = Date.now())
   for (const spec of DEMO_TEAMS) {
     const captain = makeAccount(uniqueName(`demo_captain${captains.length + 1}`))
     captains.push(captain)
-    const createdTeam = createPendingTeam(
-      league,
+    // The real journey: found a free team, recruit to the platform minimum,
+    // go official, then enter the league as a complete side.
+    const createdTeam = createTeam(
       captain,
       { name: spec.name, logo: '', primaryColor: spec.primary, secondaryColor: spec.secondary, bio: 'Guided demo team.' },
       teams,
       tick(20),
     )
     let team = createdTeam.team
-    audit = [...audit, ...createdTeam.audit]
     for (let i = 1; i < league.minPlayersPerTeam; i++) {
       const player = makeAccount(uniqueName(`demo_player${seq}`))
-      const joined = requestJoin(league, team, player, [...teams, team], tick(9))
+      const joined = requestJoin(null, team, player, [...teams, team], tick(9))
       team = joined.team
-      audit = [...audit, ...joined.audit]
-      const approved = approvePlayer(league, team, captain.id, player, tick(4))
+      const approved = approvePlayer(null, team, captain.id, player, tick(4))
       team = approved.team
-      audit = [...audit, ...approved.audit]
     }
+    const entered = enterLeague(league, team, captain.id, teams, tick(3))
+    team = entered.team
+    audit = [...audit, ...entered.audit]
     teams.push(team)
   }
 
@@ -192,7 +193,7 @@ export function removeDemoData(state: AppState): AppState {
     ...state,
     users: state.users.filter((u) => !u.isDemo),
     leagues: state.leagues.filter((l) => !l.isDemo),
-    teams: state.teams.filter((t) => !demoLeagueIds.has(t.leagueId)),
+    teams: state.teams.filter((t) => t.leagueId === null || !demoLeagueIds.has(t.leagueId)),
     matches: state.matches.filter((m) => !demoLeagueIds.has(m.leagueId)),
     auditLog: state.auditLog.filter((a) => !demoLeagueIds.has(a.leagueId)),
     primaryAccountIds: state.primaryAccountIds.filter((id) => !demoUserIds.has(id)),

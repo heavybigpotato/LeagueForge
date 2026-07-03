@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { League, Match, Team, User } from './types'
 import { PLATFORM_MIN_PLAYERS } from './types'
 import { createLeague } from './league'
-import { approvePlayer, createPendingTeam, removePlayer, requestJoin, resolveMinPlayers } from './team'
+import { approvePlayer, createTeam, enterLeague, leaveLeague, removePlayer, requestJoin, resolveMinPlayers } from './team'
 import { generateRoundRobin } from './schedule'
 import { checkIn, confirmScore, disputeScore, resolveDispute, rsvp, rsvpCount, submitScore } from './match'
 import { powerRankings } from './powerRankings'
@@ -62,17 +62,24 @@ function makeLeague(commissioner: User, overrides: Partial<Parameters<typeof cre
   }).league
 }
 
-/** Build an official team by walking the full pending → official flow. */
-function buildOfficialTeam(league: League, name: string, existing: Team[] = []): { team: Team; captain: User } {
+/** Build a free official team: standalone creation, recruit to the minimum. */
+function buildFreeTeam(name: string, existing: Team[] = [], min = PLATFORM_MIN_PLAYERS): { team: Team; captain: User } {
   const captain = makeUser()
-  let { team } = createPendingTeam(league, captain, { name, logo: '🛡️', primaryColor: '#111', secondaryColor: '#eee', bio: '' }, existing)
-  while (team.memberIds.length < league.minPlayersPerTeam) {
+  let { team } = createTeam(captain, { name, logo: '🛡️', primaryColor: '#111', secondaryColor: '#eee', bio: '' }, existing)
+  while (team.memberIds.length < min) {
     const p = makeUser()
-    team = requestJoin(league, team, p, [...existing, team]).team
-    team = approvePlayer(league, team, captain.id, p).team
+    team = requestJoin(null, team, p, [...existing, team]).team
+    team = approvePlayer(null, team, captain.id, p).team
   }
   expect(team.status).toBe('official')
   return { team, captain }
+}
+
+/** Full journey: found the team, go official, enter the league. */
+function buildOfficialTeam(league: League, name: string, existing: Team[] = []): { team: Team; captain: User } {
+  const free = buildFreeTeam(name, existing, league.minPlayersPerTeam)
+  const team = enterLeague(league, free.team, free.captain.id, existing).team
+  return { team, captain: free.captain }
 }
 
 describe('invite codes', () => {
@@ -143,77 +150,122 @@ describe('league creation', () => {
   })
 })
 
-describe('pending team → official team activation', () => {
-  it('creates the team as pending, not part of the league', () => {
-    const league = makeLeague(makeUser())
+describe('team lifecycle: standalone creation → official → league entry', () => {
+  it('anyone verified can found a team — no league required', () => {
     const captain = makeUser()
-    const { team } = createPendingTeam(league, captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
+    const { team } = createTeam(captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
     expect(team.status).toBe('pending')
+    expect(team.leagueId).toBeNull()
     expect(team.memberIds).toEqual([captain.id])
     expect(team.inviteCode).toHaveLength(8)
-    // pending team never appears in standings
-    expect(computeStandings(league, [team], [])).toHaveLength(0)
+    // a team outside a league never appears in standings
+    expect(computeStandings(makeLeague(makeUser()), [team], [])).toHaveLength(0)
   })
 
   it('requires verified email and phone to create or join a team', () => {
-    const league = makeLeague(makeUser())
     const unverified = makeUser({ phoneVerified: false })
     expect(() =>
-      createPendingTeam(league, unverified, { name: 'X', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []),
+      createTeam(unverified, { name: 'X', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []),
     ).toThrow(/verified/)
 
     const captain = makeUser()
-    const { team } = createPendingTeam(league, captain, { name: 'Y', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
-    expect(() => requestJoin(league, team, makeUser({ emailVerified: false }), [team])).toThrow(/verify/)
+    const { team } = createTeam(captain, { name: 'Y', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
+    expect(() => requestJoin(null, team, makeUser({ emailVerified: false }), [team])).toThrow(/verify/)
   })
 
-  it('activates automatically when player #11 is approved, and locks the roster', () => {
-    const league = makeLeague(makeUser()) // no transfers
+  it('goes official at 11 verified players; a free team keeps its roster unlocked', () => {
     const captain = makeUser()
-    let { team } = createPendingTeam(league, captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
+    let { team } = createTeam(captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
 
     // captain + 9 approved teammates = 10 players → still pending
     for (let i = 0; i < 9; i++) {
       const p = makeUser()
-      team = requestJoin(league, team, p, [team]).team
-      team = approvePlayer(league, team, captain.id, p).team
+      team = requestJoin(null, team, p, [team]).team
+      team = approvePlayer(null, team, captain.id, p).team
     }
     expect(team.memberIds).toHaveLength(10)
     expect(team.status).toBe('pending')
 
     // player #11 joins and is approved → automatic activation
     const eleventh = makeUser()
-    team = requestJoin(league, team, eleventh, [team]).team
-    const event = approvePlayer(league, team, captain.id, eleventh)
+    team = requestJoin(null, team, eleventh, [team]).team
+    const event = approvePlayer(null, team, captain.id, eleventh)
     expect(event.activated).toBe(true)
     expect(event.team.status).toBe('official')
     expect(event.team.activatedAt).toBeDefined()
-    expect(event.team.rosterLocked).toBe(true) // league does not allow transfers
-    expect(event.audit.some((a) => a.action === 'team.activated')).toBe(true)
+    expect(event.team.leagueId).toBeNull()
+    expect(event.team.rosterLocked).toBe(false) // no league, no lock
   })
 
   it('joining puts players in the captain approval queue, and only the captain approves', () => {
-    const league = makeLeague(makeUser())
     const captain = makeUser()
-    let { team } = createPendingTeam(league, captain, { name: 'Z', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
+    let { team } = createTeam(captain, { name: 'Z', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
     const p = makeUser()
-    team = requestJoin(league, team, p, [team]).team
+    team = requestJoin(null, team, p, [team]).team
     expect(team.pendingMemberIds).toContain(p.id)
     expect(team.memberIds).not.toContain(p.id)
-    expect(() => approvePlayer(league, team, p.id, p)).toThrow(/Only the team captain/)
+    expect(() => approvePlayer(null, team, p.id, p)).toThrow(/Only the team captain/)
   })
 
-  it('blocks one account from joining two teams in the same league', () => {
+  it('captains enter a league with a complete official team; the roster locks per league policy', () => {
+    const league = makeLeague(makeUser()) // no transfers
+    const { team, captain } = buildFreeTeam('Entrants FC')
+    // pending teams and non-captains stay out
+    const stillPending = createTeam(makeUser(), { name: 'Half Built', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [team]).team
+    expect(() => enterLeague(league, stillPending, stillPending.captainId, [])).toThrow(/official teams/)
+    expect(() => enterLeague(league, team, makeUser().id, [])).toThrow(/captain/)
+
+    const entered = enterLeague(league, team, captain.id, []).team
+    expect(entered.leagueId).toBe(league.id)
+    expect(entered.rosterLocked).toBe(true) // league does not allow transfers
+    // no double-entry
+    expect(() => enterLeague(league, entered, captain.id, [entered])).toThrow(/already in this league/)
+    const otherLeague = makeLeague(makeUser())
+    expect(() => enterLeague(otherLeague, entered, captain.id, [entered])).toThrow(/another league/)
+  })
+
+  it('league entry enforces capacity, roster bounds, and one team per player', () => {
+    const league = makeLeague(makeUser(), { minTeams: 2, maxTeams: 2, minPlayersPerTeam: 12 })
+    const teams: Team[] = []
+    for (const name of ['Cap A', 'Cap B']) teams.push(buildOfficialTeam(league, name, teams).team)
+
+    // full league turns the next team away
+    const third = buildFreeTeam('Cap C', teams, 12)
+    expect(() => enterLeague(league, third.team, third.captain.id, teams)).toThrow(/full/)
+
+    // roster below the league's (higher) minimum is rejected
+    const small = buildFreeTeam('Small Squad', teams) // 11 players, league wants 12
+    expect(() => enterLeague(makeLeague(makeUser(), { minPlayersPerTeam: 12 }), small.team, small.captain.id, [])).toThrow(/at least 12/)
+
+    // a player on a league team blocks their other team from entering it
+    const spare = makeLeague(makeUser(), { maxTeams: 8 })
+    const inLeague = buildOfficialTeam(spare, 'First Club', [])
+    let poached = buildFreeTeam('Second Club', [inLeague.team]).team
+    const sharedPlayer = { ...makeUser(), id: inLeague.team.memberIds[1] }
+    poached = requestJoin(null, poached, sharedPlayer, [inLeague.team, poached]).team
+    poached = approvePlayer(null, poached, poached.captainId, sharedPlayer).team
+    expect(() => enterLeague(spare, poached, poached.captainId, [inLeague.team])).toThrow(/already on/)
+  })
+
+  it('teams leave between seasons and survive their league', () => {
     const league = makeLeague(makeUser())
-    const capA = makeUser()
-    const capB = makeUser()
-    const a = createPendingTeam(league, capA, { name: 'A', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []).team
-    const b = createPendingTeam(league, capB, { name: 'B', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [a]).team
-    const p = makeUser()
-    const a2 = requestJoin(league, a, p, [a, b]).team
-    expect(() => requestJoin(league, b, p, [a2, b])).toThrow(/already on a team/)
-    // a captain cannot create a second team in the league either
-    expect(() => createPendingTeam(league, capA, { name: 'C', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [a2, b])).toThrow(/already on a team/)
+    const teams: Team[] = []
+    for (const name of ['Stay FC', 'Go United']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [, goUnited] = teams
+
+    // with fixtures in the current season, leaving is blocked
+    const fixtures = generateRoundRobin(league, teams)
+    expect(() => leaveLeague(league, goUnited, goUnited.captainId, fixtures)).toThrow(/between seasons/)
+
+    // with no fixtures, the captain can withdraw; the team stays whole and unlocked
+    const left = leaveLeague(league, goUnited, goUnited.captainId, []).team
+    expect(left.leagueId).toBeNull()
+    expect(left.status).toBe('official')
+    expect(left.rosterLocked).toBe(false)
+    expect(left.memberIds).toEqual(goUnited.memberIds)
+    // and it can enter a different league afterwards
+    const nextLeague = makeLeague(makeUser())
+    expect(enterLeague(nextLeague, left, left.captainId, []).team.leagueId).toBe(nextLeague.id)
   })
 
   it('enforces the roster maximum and prevents official teams dropping below the minimum', () => {
@@ -232,7 +284,7 @@ describe('scheduling', () => {
     const league = makeLeague(makeUser())
     const teams: Team[] = []
     for (const name of ['A', 'B', 'C', 'D']) teams.push(buildOfficialTeam(league, name, teams).team)
-    const pending = createPendingTeam(league, makeUser(), { name: 'Pending', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, teams).team
+    const pending = createTeam(makeUser(), { name: 'Pending', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, teams).team
 
     const fixtures = generateRoundRobin(league, [...teams, pending])
     expect(fixtures).toHaveLength(6) // C(4,2)
@@ -353,17 +405,24 @@ describe('audit log', () => {
     }).toThrow()
   })
 
-  it('every step of the trust flow leaves an audit trail', () => {
+  it('every league action leaves an audit trail; free-team building stays off the league record', () => {
     const commissioner = makeUser()
-    const league = makeLeague(commissioner)
-    const captain = makeUser()
-    const created = createPendingTeam(league, captain, { name: 'Trail FC', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
-    expect(created.audit.map((a) => a.action)).toEqual(['team.created'])
+    const league = makeLeague(commissioner, { allowTransfers: true })
+    const { team, captain } = buildFreeTeam('Trail FC')
+
+    // building a free team is not league activity — nothing to audit yet
+    const freeJoin = requestJoin(null, team, makeUser(), [team])
+    expect(freeJoin.audit).toEqual([])
+
+    const entered = enterLeague(league, team, captain.id, [])
+    expect(entered.audit.map((a) => a.action)).toEqual(['team.entered-league'])
+
     const p = makeUser()
-    const joined = requestJoin(league, created.team, p, [created.team])
+    const joined = requestJoin(league, entered.team, p, [entered.team])
     expect(joined.audit.map((a) => a.action)).toEqual(['team.player-joined'])
-    const approved = approvePlayer(league, joined.team, captain.id, p)
-    expect(approved.audit.map((a) => a.action)).toEqual(['team.player-approved'])
+
+    const left = leaveLeague(league, entered.team, captain.id, [])
+    expect(left.audit.map((a) => a.action)).toEqual(['team.left-league'])
   })
 })
 

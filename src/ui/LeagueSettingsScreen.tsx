@@ -152,6 +152,24 @@ export function LeagueSettingsScreen() {
           <Icon name="scroll" size={15} /> End Season {league.currentSeason} &amp; archive
         </button>
       </div>
+
+      <h2>Danger zone</h2>
+      <div className="card" style={{ borderColor: 'rgba(251,111,132,0.4)' }}>
+        <p className="faint" style={{ marginTop: 0 }}>
+          Deleting the league erases its fixtures, results, and history. The teams survive — they keep their rosters and
+          are free to join another league.
+        </p>
+        <button
+          className="btn danger"
+          onClick={() => {
+            if (window.confirm(`Delete ${league.name} for good? Teams keep their rosters; fixtures and history are erased.`)) {
+              if (store.deleteLeague(league.id)) navigate('/')
+            }
+          }}
+        >
+          <Icon name="x" size={15} /> Delete this league
+        </button>
+      </div>
     </div>
   )
 }

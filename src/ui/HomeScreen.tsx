@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '../store/store'
+import { PLATFORM_MIN_PLAYERS } from '../core/types'
 import { ActionCard, Badge, TeamLogo, formatDate, formatTime } from './components'
 import { Icon, LeagueBadge } from './icons'
 
@@ -26,6 +27,7 @@ export function HomeScreen() {
   )
   const approvals = myCaptainTeams.filter((t) => t.pendingMemberIds.length > 0)
   const pendingTeams = myCaptainTeams.filter((t) => t.status === 'pending')
+  const freeOfficialTeams = myCaptainTeams.filter((t) => t.status === 'official' && t.leagueId === null)
   const attention = confirmations.length + disputes.length + approvals.length
 
   const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '—'
@@ -50,7 +52,7 @@ export function HomeScreen() {
           : 'All caught up.'}
       </p>
 
-      {(attention > 0 || pendingTeams.length > 0) && (
+      {(attention > 0 || pendingTeams.length > 0 || freeOfficialTeams.length > 0) && (
         <>
           <h2>Needs your attention</h2>
           {confirmations.map((m) => (
@@ -84,19 +86,30 @@ export function HomeScreen() {
             />
           ))}
           {pendingTeams.map((t) => {
-            const league = state.leagues.find((l) => l.id === t.leagueId)!
-            const missing = league.minPlayersPerTeam - t.memberIds.length
+            const league = state.leagues.find((l) => l.id === t.leagueId)
+            const required = league?.minPlayersPerTeam ?? PLATFORM_MIN_PLAYERS
+            const missing = required - t.memberIds.length
             return (
               <ActionCard
                 key={t.id}
                 to={`/team/${t.id}`}
                 icon="ticket"
                 tone="gold"
-                title={`${t.name} is ${missing} player${missing === 1 ? '' : 's'} from activation`}
-                sub={`Share invite code ${t.inviteCode} to reach ${league.minPlayersPerTeam}`}
+                title={`${t.name} is ${missing} player${missing === 1 ? '' : 's'} from going official`}
+                sub={`Share invite code ${t.inviteCode} to reach ${required}`}
               />
             )
           })}
+          {freeOfficialTeams.map((t) => (
+            <ActionCard
+              key={t.id}
+              to="/discover"
+              icon="compass"
+              tone="volt"
+              title={`${t.name} is ready for a league`}
+              sub="Browse leagues near you and enter as a complete side"
+            />
+          ))}
         </>
       )}
 
@@ -127,15 +140,15 @@ export function HomeScreen() {
         </>
       )}
 
-      {state.leagues.length === 0 && (
+      {myTeams.length === 0 && myLeagues.length === 0 && (
         <>
           <h2>Get started</h2>
           <ActionCard
-            to="/create-league"
-            icon="trophy"
+            to="/create-team"
+            icon="shield"
             tone="volt"
-            title="Create a league"
-            sub="Set the rules. Run the season."
+            title="Create a team"
+            sub="Recruit your squad, then pick a league."
           />
           <ActionCard
             to="/join"
@@ -144,15 +157,51 @@ export function HomeScreen() {
             title="Join a team"
             sub="Have a code from a captain?"
           />
+          <ActionCard
+            to="/discover"
+            icon="compass"
+            tone="gold"
+            title="Find a league"
+            sub="See what's running around you."
+          />
+          <ActionCard
+            to="/create-league"
+            icon="trophy"
+            tone="red"
+            title="Create a league"
+            sub="Set the rules. Run the season."
+          />
         </>
       )}
 
-      {state.leagues.length > 0 && <h2>Your leagues</h2>}
-      {state.leagues.map((league) => {
+      {myTeams.length > 0 && <h2>Your teams</h2>}
+      {myTeams.map((t) => {
+        const league = state.leagues.find((l) => l.id === t.leagueId)
+        return (
+          <Link to={`/team/${t.id}`} key={t.id} className="card clickable">
+            <div className="row">
+              <TeamLogo team={t} size={42} />
+              <div className="grow">
+                <div className="row" style={{ gap: 8 }}>
+                  <strong className="truncate">{t.name}</strong>
+                  {t.captainId === currentUser.id && <Badge kind="volt">Captain</Badge>}
+                  <Badge kind={t.status === 'official' ? 'official' : 'pending'}>{t.status}</Badge>
+                </div>
+                <div className="faint">
+                  {league ? league.name : t.status === 'official' ? 'Free agent — pick a league' : `${t.memberIds.length} players · recruiting`}
+                </div>
+              </div>
+              <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
+            </div>
+          </Link>
+        )
+      })}
+
+      {myLeagues.length > 0 && <h2>Your leagues</h2>}
+      {myLeagues.map((league) => {
         const official = state.teams.filter((t) => t.leagueId === league.id && t.status === 'official')
         const pending = state.teams.filter((t) => t.leagueId === league.id && t.status === 'pending')
         const played = state.matches.filter((m) => m.leagueId === league.id && m.status === 'official').length
-        const mine = myLeagues.includes(league)
         return (
           <Link to={`/league/${league.id}`} key={league.id} className="card clickable">
             <div className="row">
@@ -162,9 +211,9 @@ export function HomeScreen() {
                   <strong style={{ fontSize: 15.5, lineHeight: 1.25 }}>{league.name}</strong>
                   {league.commissionerId === currentUser.id ? (
                     <Badge kind="volt">Commissioner</Badge>
-                  ) : mine ? (
+                  ) : (
                     <Badge kind="neutral">Member</Badge>
-                  ) : null}
+                  )}
                 </div>
                 <div className="muted" style={{ textTransform: 'capitalize' }}>
                   {league.sport} · {league.city}, {league.country}
@@ -178,10 +227,15 @@ export function HomeScreen() {
           </Link>
         )
       })}
-      {state.leagues.length > 0 && (
-        <Link to="/create-league" className="btn primary" style={{ textDecoration: 'none', marginTop: 6 }}>
-          <Icon name="plus" size={16} /> Create a League
-        </Link>
+      {(myTeams.length > 0 || myLeagues.length > 0) && (
+        <div className="btnrow" style={{ marginTop: 6 }}>
+          <Link to="/create-team" className="btn" style={{ textDecoration: 'none' }}>
+            <Icon name="plus" size={15} /> New team
+          </Link>
+          <Link to="/create-league" className="btn" style={{ textDecoration: 'none' }}>
+            <Icon name="plus" size={15} /> New league
+          </Link>
+        </div>
       )}
     </div>
   )

@@ -1,4 +1,6 @@
 import type { League, Match, Team, User } from './types'
+import { PLATFORM_MIN_PLAYERS } from './types'
+import { LIMITS } from './config'
 
 /**
  * Integrity invariants. These are the promises the platform makes; the
@@ -31,7 +33,10 @@ export function checkInvariants(s: StateSnapshot): Violation[] {
 
   // ---- referential integrity
   for (const t of s.teams) {
-    if (!leagueIds.has(t.leagueId)) v.push({ rule: 'orphaned-team', detail: `Team "${t.name}" references missing league ${t.leagueId}.` })
+    // Free-agent teams (leagueId null) are valid — they exist between leagues.
+    if (t.leagueId !== null && !leagueIds.has(t.leagueId)) {
+      v.push({ rule: 'orphaned-team', detail: `Team "${t.name}" references missing league ${t.leagueId}.` })
+    }
     if (!userIds.has(t.captainId)) v.push({ rule: 'orphaned-user', detail: `Team "${t.name}" captain ${t.captainId} does not exist.` })
     for (const id of t.memberIds) {
       if (!userIds.has(id)) v.push({ rule: 'orphaned-user', detail: `Team "${t.name}" roster references missing user ${id}.` })
@@ -71,14 +76,15 @@ export function checkInvariants(s: StateSnapshot): Violation[] {
     }
   }
 
-  // ---- roster integrity
+  // ---- roster integrity (league bounds when in a league, platform bounds when free)
   for (const t of s.teams) {
-    const league = leagueById.get(t.leagueId)
-    if (!league) continue
-    if (t.status === 'official' && t.memberIds.length < league.minPlayersPerTeam) {
-      v.push({ rule: 'official-below-minimum', detail: `Official team "${t.name}" has ${t.memberIds.length} players, below the league minimum of ${league.minPlayersPerTeam}.` })
+    const league = t.leagueId !== null ? leagueById.get(t.leagueId) : null
+    const min = league ? league.minPlayersPerTeam : PLATFORM_MIN_PLAYERS
+    const max = league ? league.maxPlayersPerTeam : LIMITS.maxRoster
+    if (t.status === 'official' && t.memberIds.length < min) {
+      v.push({ rule: 'official-below-minimum', detail: `Official team "${t.name}" has ${t.memberIds.length} players, below the minimum of ${min}.` })
     }
-    if (t.memberIds.length > league.maxPlayersPerTeam) {
+    if (t.memberIds.length > max) {
       v.push({ rule: 'roster-over-maximum', detail: `Team "${t.name}" exceeds the roster maximum.` })
     }
   }

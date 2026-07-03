@@ -23,7 +23,7 @@ const TAB_LABELS: Record<Tab, string> = {
 
 export function LeagueScreen() {
   const { leagueId } = useParams()
-  const { state, currentUser, generateSchedule } = useStore()
+  const { state, currentUser, generateSchedule, enterLeague } = useStore()
   const [tab, setTab] = useState<Tab>('standings')
 
   const league = state.leagues.find((l) => l.id === leagueId)
@@ -35,6 +35,10 @@ export function LeagueScreen() {
   const verified = matches.filter((m) => m.status === 'official')
   const isCommissioner = currentUser.id === league.commissionerId
   const myTeam = teams.find((t) => t.memberIds.includes(currentUser.id))
+  // Free official teams this user captains — they can enter the league whole.
+  const myFreeTeams = state.teams.filter(
+    (t) => t.captainId === currentUser.id && t.status === 'official' && t.leagueId === null,
+  )
   const goals = verified.reduce((sum, m) => sum + (m.result ? m.result.homeScore + m.result.awayScore : 0), 0)
   const champion = teams.find((t) => t.id === bracket(league.id, state.matches, league.currentSeason)?.championTeamId)
   const isKnockout = league.scheduleFormat === 'knockout'
@@ -151,8 +155,13 @@ export function LeagueScreen() {
               )}
             </Link>
           ))}
-          {!myTeam && (
-            <Link to={`/league/${league.id}/create-team`} className="btn primary" style={{ textDecoration: 'none' }}>
+          {myFreeTeams.map((t) => (
+            <button key={t.id} className="btn primary" onClick={() => enterLeague(t.id, league.id)}>
+              <Icon name="shield" size={16} /> Enter with {t.name}
+            </button>
+          ))}
+          {!myTeam && myFreeTeams.length === 0 && (
+            <Link to="/create-team" className="btn primary" style={{ textDecoration: 'none' }}>
               <Icon name="plus" size={16} /> Create a Team
             </Link>
           )}
