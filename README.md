@@ -93,19 +93,37 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
   installed app launches instantly and works offline. Deployed to GitHub Pages on every
   push to `main` (`.github/workflows/deploy.yml`).
 
-The app starts **completely empty** — first launch is a real onboarding: create an
-account, verify your email, verify your phone (codes are generated locally and shown
-inline, clearly labelled as demo delivery, since the local build has no mail/SMS gateway).
-Multiple accounts can live on one device and be switched from the Profile tab, which is
-also how invite → approve → activate flows are exercised end-to-end. There is no
-pre-loaded or generated sample data of any kind. State persists to `localStorage`.
+The app starts **completely empty** — first launch is an explicit landing (create a
+commissioner account / try the guided demo / import a backup) followed by real
+onboarding: create an account, verify your email, verify your phone. Codes are generated
+locally with an expiry window and are clearly labelled as demo delivery — the local
+build has no mail/SMS gateway and never pretends otherwise. Multiple accounts can live
+on one device and switching requires the account password.
+
+**Guided demo** is strictly opt-in: it builds a fully labeled sample league *through the
+exact same domain commands real flows use* (accounts verified with real codes, teams
+walked through pending → official, results through two-captain verification), flags every
+entity as demo, and can be removed in one tap without touching real data.
+
+**Local-first, honestly**: persistence is a versioned envelope in browser storage
+(schema-checked, with migrations from older versions and export-before-reset if a payload
+is ever unreadable). The **Data Center** (`/data`) is the portability hub: full JSON
+export, validated import with a preview (counts, schema version, duplicate-id and
+integrity checks) before anything is replaced, a system health panel running the
+invariant checker (`src/core/invariants.ts` — pending teams never scheduled, no result
+without verification, no playoff draws, roster minimums, referential integrity), demo
+management, and device reset. Check-ins, evidence notes, and identities are all labelled
+as locally recorded — production email/SMS, synced storage, and signed audit logs are
+adapter seams (`src/adapters/`: clock, storage) awaiting a backend.
 
 ## Getting started
 
 ```bash
 npm install
 npm run dev        # start the app
-npm test           # run the core engine test suite (vitest)
+npm test           # run the test suite (engine + persistence/backup/demo/invariants)
+npm run lint       # eslint
+npm run typecheck  # tsc
 npm run build      # typecheck + production build
 ```
 
@@ -113,8 +131,9 @@ npm run build      # typecheck + production build
 
 ```
 src/
-  core/       pure domain engine (no React) + tests
-  store/      app state, persistence, demo seed
+  core/       pure domain engine + config + invariants + tests (no React)
+  adapters/   local-first seams: clock, storage (auth/notify/upload plug in later)
+  store/      app state, versioned persistence + migrations, backup, guided demo
   ui/         screens and shared components
 docs/SPEC.md  full product specification
 ```

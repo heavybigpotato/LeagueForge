@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useStore } from '../store/store'
+import { VERIFICATION } from '../core/config'
 import { Avatar, Toasts } from './components'
 import { BrandMark, Icon } from './icons'
+import { ImportBackupButton } from './ImportBackup'
 
 /**
  * Gate shown until an account on this device is signed in AND verified.
@@ -38,9 +40,18 @@ export function OnboardingScreen() {
         </p>
         {code && (
           <div className="democode" data-code={code}>
-            <Icon name="send" size={14} /> Demo delivery — your code is <strong>{code}</strong>
+            <Icon name="send" size={14} /> Demo code (generated locally — no real {stage} is sent): <strong>{code}</strong>
           </div>
         )}
+        <p className="faint" style={{ textAlign: 'center', marginTop: 8 }}>
+          Codes expire after {Math.round(VERIFICATION.ttlMs / 60000)} minutes.{' '}
+          <button
+            style={{ background: 'none', border: 'none', color: 'var(--blue)', font: 'inherit', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+            onClick={() => store.resendCodes()}
+          >
+            Resend codes
+          </button>
+        </p>
         <label className="field" style={{ marginTop: 14 }}>
           <span>{stage === 'email' ? 'Email code' : 'Phone code'}</span>
           <input
@@ -67,14 +78,18 @@ export function OnboardingScreen() {
   }
 
   // ---- step: create account
-  if (mode === 'signup' || primaryAccounts.length === 0) {
+  if (mode === 'signup') {
     const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }))
     return (
       <Shell>
-        {primaryAccounts.length === 0 ? <Welcome /> : <div className="kicker">New account</div>}
-        <h1 style={{ marginTop: primaryAccounts.length === 0 ? 18 : 4 }}>Create your account</h1>
+        <div className="kicker">New account</div>
+        <h1 style={{ marginTop: 4 }}>Create your account</h1>
         <p className="muted" style={{ marginTop: 0 }}>
           One account per person. You&rsquo;ll verify your email and phone next — unverified accounts can&rsquo;t join rosters.
+        </p>
+        <p className="faint" style={{ marginTop: -6 }}>
+          Local-only identity: this account lives on this device. Verification codes are generated locally — production
+          email/SMS delivery requires a hosted provider.
         </p>
         <label className="field">
           <span>Username</span>
@@ -99,11 +114,34 @@ export function OnboardingScreen() {
         >
           Continue
         </button>
-        {primaryAccounts.length > 0 && (
-          <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => setMode('welcome')}>
-            Back
-          </button>
-        )}
+        <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => setMode('welcome')}>
+          Back
+        </button>
+      </Shell>
+    )
+  }
+
+  // ---- first run: landing with explicit paths (nothing is auto-created)
+  if (primaryAccounts.length === 0) {
+    return (
+      <Shell>
+        <Welcome />
+        <button className="btn primary" onClick={() => setMode('signup')}>
+          <Icon name="user" size={16} /> Create commissioner account
+        </button>
+        <p className="faint" style={{ textAlign: 'center', margin: '10px 0' }}>
+          Got a team invite code? Create your account first — you&rsquo;ll enter the code right after.
+        </p>
+        <button className="btn ghost" onClick={() => store.startGuidedDemo()}>
+          <Icon name="sparkle" size={16} /> Try guided demo
+        </button>
+        <div style={{ marginTop: 8 }}>
+          <ImportBackupButton ghost />
+        </div>
+        <p className="faint" style={{ textAlign: 'center', marginTop: 16 }}>
+          Local-first: everything stays on this device. Demo verification codes are generated locally — no real email or
+          SMS is sent in this build.
+        </p>
       </Shell>
     )
   }
@@ -153,6 +191,9 @@ export function OnboardingScreen() {
       <button className="btn primary" onClick={() => setMode('signup')}>
         <Icon name="plus" size={16} /> Create a new account
       </button>
+      <div style={{ marginTop: 8 }}>
+        <ImportBackupButton ghost />
+      </div>
     </Shell>
   )
 }

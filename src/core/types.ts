@@ -25,6 +25,8 @@ export interface User {
   idVerified: boolean
   deviceFingerprint: string
   reputation: number
+  /** True only for accounts created by the explicit guided demo. */
+  isDemo?: boolean
   createdAt: number
 }
 
@@ -97,8 +99,8 @@ export type TieBreaker =
   | 'head-to-head'
   | 'win-percentage'
 
-/** Platform-wide floor for roster size. League minimums may be raised, never lowered. */
-export const PLATFORM_MIN_PLAYERS = 11
+/** Platform-wide floor for roster size (re-exported from central config). */
+export { PLATFORM_MIN_PLAYERS } from './config'
 
 export interface League {
   id: Id
@@ -126,6 +128,8 @@ export interface League {
   commissionerId: Id
   refereeIds: Id[]
   allowTransfers: boolean
+  /** True only for the league created by the explicit guided demo. */
+  isDemo?: boolean
   /** 1-based; every match is stamped with the season it belongs to. */
   currentSeason: number
   /** Archive of completed seasons, oldest first. */
