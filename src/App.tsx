@@ -14,6 +14,8 @@ import { MatchScreen } from './ui/MatchScreen'
 import { LiveScoreboardScreen } from './ui/LiveScoreboardScreen'
 import { JoinScreen } from './ui/JoinScreen'
 import { ProfileScreen } from './ui/ProfileScreen'
+import { DataCenterScreen } from './ui/DataCenterScreen'
+import { ROUTES } from './core/config'
 
 export default function App() {
   return (
@@ -48,6 +50,7 @@ function MainApp() {
               <Route path="/join" element={<JoinScreen />} />
               <Route path="/join/:code" element={<JoinScreen />} />
               <Route path="/profile" element={<ProfileScreen />} />
+              <Route path={ROUTES.dataCenter} element={<DataCenterScreen />} />
             </Routes>
           </main>
           <Toasts />

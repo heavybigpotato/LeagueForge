@@ -8,14 +8,13 @@ export function newId(prefix: string): string {
     .slice(2, 6)}`
 }
 
-/** Unambiguous alphabet: no 0/O or 1/I lookalikes. */
-const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+import { INVITE_CODE } from './config'
 
-/** 8-character invite code, e.g. "ABC12345". */
+/** Invite code (length/alphabet from central config), e.g. "ABC12345". */
 export function newInviteCode(random: () => number = Math.random): string {
   let code = ''
-  for (let i = 0; i < 8; i++) {
-    code += INVITE_ALPHABET[Math.floor(random() * INVITE_ALPHABET.length)]
+  for (let i = 0; i < INVITE_CODE.length; i++) {
+    code += INVITE_CODE.alphabet[Math.floor(random() * INVITE_CODE.alphabet.length)]
   }
   return code
 }

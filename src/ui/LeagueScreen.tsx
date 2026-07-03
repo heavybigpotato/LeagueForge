@@ -81,6 +81,8 @@ export function LeagueScreen() {
 
       <Announcements league={league} isCommissioner={isCommissioner} />
 
+      {isCommissioner && <SetupChecklist league={league} />}
+
       <div className="tabs">
         {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
@@ -459,6 +461,71 @@ function SeasonCard({ record, teamOf }: { record: SeasonRecord; teamOf: (id?: st
               </div>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+/**
+ * Adaptive commissioner checklist: derived entirely from live league state,
+ * collapses once the league is fully operational.
+ */
+function SetupChecklist({ league }: { league: League }) {
+  const { state } = useStore()
+  const [open, setOpen] = useState(true)
+  const teams = state.teams.filter((t) => t.leagueId === league.id)
+  const official = teams.filter((t) => t.status === 'official')
+  const matches = state.matches.filter((m) => m.leagueId === league.id && (m.season ?? 1) === league.currentSeason)
+  const verified = matches.filter((m) => m.status === 'official')
+  const disputes = matches.filter((m) => m.status === 'disputed')
+
+  const steps: { label: string; done: boolean; hint: string }[] = [
+    { label: 'League created', done: true, hint: 'Rules, format, and scoring are set. Adjust them in Settings.' },
+    { label: 'Captains invited', done: teams.length > 0, hint: 'Share the league - captains create pending teams from the Teams tab.' },
+    {
+      label: `${Math.max(2, league.minTeams)} official teams`,
+      done: official.length >= Math.max(2, league.minTeams),
+      hint: `Teams activate automatically at ${league.minPlayersPerTeam} verified players. ${official.length} official so far.`,
+    },
+    { label: 'Schedule generated', done: matches.length > 0, hint: 'Generate fixtures (or draw the cup) from the Schedule tab.' },
+    { label: 'First verified result', done: verified.length > 0, hint: 'Captains submit, opponents confirm - only then do standings move.' },
+    { label: 'No open disputes', done: disputes.length === 0, hint: disputes.length > 0 ? `${disputes.length} dispute(s) need your ruling.` : 'Disputes freeze standings until you rule.' },
+  ]
+  const doneCount = steps.filter((s) => s.done).length
+  if (doneCount === steps.length) return null
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <button
+        className="row"
+        style={{ width: '100%', background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: 0, gap: 8 }}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span style={{ color: 'var(--volt)' }}><Icon name="check" size={16} /></span>
+        <strong className="grow" style={{ textAlign: 'left' }}>League setup - {doneCount}/{steps.length}</strong>
+        <Icon name="chevronRight" size={15} />
+      </button>
+      <div className="progress" style={{ marginTop: 10 }}>
+        <div className="fill" style={{ width: `${(doneCount / steps.length) * 100}%` }} />
+      </div>
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          {steps.map((s, i) => (
+            <div className="row" key={i} style={{ padding: '7px 0', alignItems: 'flex-start' }}>
+              <span style={{ color: s.done ? 'var(--green)' : 'var(--faint)', marginTop: 2 }}>
+                <Icon name={s.done ? 'check' : 'clock'} size={15} />
+              </span>
+              <span className="grow">
+                <span style={{ fontWeight: 700, fontSize: 13.5, textDecoration: s.done ? 'line-through' : 'none', opacity: s.done ? 0.6 : 1 }}>
+                  {s.label}
+                </span>
+                {!s.done && <span className="faint" style={{ display: 'block' }}>{s.hint}</span>}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

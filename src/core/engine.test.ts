@@ -595,7 +595,6 @@ describe('league administration', () => {
     const commissioner = makeUser()
     const league = makeLeague(commissioner)
     expect(() => updateLeague(league, makeUser().id, { description: 'x' })).toThrow(/commissioner/)
-    expect(() => updateLeague(league, commissioner.id, { minPlayersPerTeam: 5, maxPlayersPerTeam: 25 }).league.minPlayersPerTeam).not.toThrow
     expect(updateLeague(league, commissioner.id, { minPlayersPerTeam: 5 }).league.minPlayersPerTeam).toBe(PLATFORM_MIN_PLAYERS)
     expect(() => updateLeague(league, commissioner.id, { maxPlayersPerTeam: 3 })).toThrow(/Maximum players/)
     expect(() => updateLeague(league, commissioner.id, { scoring: { pointsForWin: 1, pointsForDraw: 1, pointsForLoss: 0 } })).toThrow(/worth more/)

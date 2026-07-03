@@ -130,7 +130,7 @@ export function MatchScreen() {
 
       {match.status === 'scheduled' && myTeam && !checkedIn && (
         <button className="btn" onClick={() => store.checkIn(match.id, myTeam.id)}>
-          <Icon name="qr" size={16} /> QR Check-in <span style={{ color: 'var(--faint)', fontWeight: 600 }}>(GPS validated)</span>
+          <Icon name="qr" size={16} /> QR Check-in <span style={{ color: 'var(--faint)', fontWeight: 600 }}>(recorded locally)</span>
         </button>
       )}
 
@@ -241,6 +241,7 @@ export function MatchScreen() {
     return (
         <div className="card">
           <strong>Add evidence</strong>
+          <p className="faint" style={{ margin: '6px 0 0' }}>Evidence notes are saved locally on this device — verified file uploads require hosted storage.</p>
           <div className="fieldgrid" style={{ marginTop: 10 }}>
             <label className="field">
               <span>Type</span>

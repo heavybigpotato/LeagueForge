@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useStore } from '../store/store'
+import { ROUTES } from '../core/config'
 import { Avatar, Badge, VerificationChecks } from './components'
 import { Icon, LeagueBadge, Crest } from './icons'
 
 export function ProfileScreen() {
-  const { state, currentUser, signIn, signOut, eraseDevice } = useStore()
+  const { state, currentUser, signIn, signOut } = useStore()
   const [switchFor, setSwitchFor] = useState<string | null>(null)
   const [switchPassword, setSwitchPassword] = useState('')
 
@@ -133,15 +135,13 @@ export function ProfileScreen() {
       <button className="btn ghost" style={{ marginTop: 8 }} onClick={signOut}>
         Sign out
       </button>
-      <button
-        className="btn danger"
-        style={{ marginTop: 8 }}
-        onClick={() => {
-          if (window.confirm('Erase ALL LeagueForge data on this device? This cannot be undone.')) eraseDevice()
-        }}
-      >
-        <Icon name="x" size={15} /> Erase all data on this device
-      </button>
+      <Link to={ROUTES.dataCenter} className="btn" style={{ textDecoration: 'none', marginTop: 8 }}>
+        <Icon name="scroll" size={15} /> Data Center — backup, import, demo &amp; reset
+      </Link>
+      <p className="faint" style={{ marginTop: 12 }}>
+        Local-only identity: accounts and league data live in this browser&rsquo;s storage — export a backup from the Data
+        Center to move or protect them.
+      </p>
     </div>
   )
 }

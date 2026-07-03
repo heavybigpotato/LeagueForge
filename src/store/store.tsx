@@ -7,7 +7,10 @@ import { addEvidence, checkIn, confirmScore, disputeScore, rescheduleMatch, reso
 import { advancePlayoffs, startPlayoffs } from '../core/playoffs'
 import { endSeason } from '../core/seasons'
 import { auditEntry } from '../core/audit'
-import { checkPassword, createAccount, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
+import { checkPassword, createAccount, newVerification, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
+import { clearState, emptyAppState, loadState, saveState } from './persistence'
+import { buildGuidedDemo, hasDemoData, removeDemoData } from './demo'
+import { now as clockNow } from '../adapters/clock'
 import type { EvidenceKind } from '../core/types'
 
 export interface Notification {
@@ -36,46 +39,28 @@ type Action =
   | { type: 'notify'; text: string; kind: Notification['kind'] }
   | { type: 'dismiss'; id: number }
 
-const STORAGE_KEY = 'leagueforge-state-v6'
 let notifSeq = 1
 
 /** The app ships empty — no pre-loaded users, leagues, or results. */
-export function emptyState(): AppState {
-  return {
-    users: [],
-    currentUserId: null,
-    primaryAccountIds: [],
-    verifications: {},
-    leagues: [],
-    teams: [],
-    matches: [],
-    auditLog: [],
-    notifications: [],
-  }
-}
+export const emptyState = emptyAppState
+
+/**
+ * If the persisted payload could not be understood, keep the raw bytes so
+ * the Data Center can offer export-before-reset instead of silently losing
+ * the user's data.
+ */
+export let corruptedBackupRaw: string | null = null
 
 function loadInitialState(): AppState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return { ...emptyState(), ...(JSON.parse(raw) as AppState), notifications: [] }
-  } catch {
-    /* corrupted state falls through to a fresh start */
-  }
-  return emptyState()
-}
-
-function persist(state: AppState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, notifications: [] }))
-  } catch {
-    /* storage may be unavailable; the app still works in-memory */
-  }
+  const result = loadState()
+  corruptedBackupRaw = result.corruptedRaw
+  return result.state ?? emptyAppState()
 }
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'set':
-      persist(action.state)
+      saveState(action.state)
       return action.state
     case 'notify':
       // keep only the latest few — every rendered toast dismisses itself
@@ -102,6 +87,13 @@ export interface StoreApi {
   signOut(): void
   /** Password-checked sign-in; also how identities are switched. */
   signIn(userId: string, password: string): boolean
+  /** Regenerate the local demo verification codes for the signed-in account. */
+  resendCodes(): void
+  /** Explicit guided demo: generates labeled demo data through real commands. */
+  startGuidedDemo(): void
+  removeDemoData(): void
+  /** Replace local state with a validated backup (replace mode). */
+  applyImportedState(state: AppState): void
   eraseDevice(): void
   updateLeague(leagueId: string, input: UpdateLeagueInput): boolean
   postAnnouncement(leagueId: string, text: string): void
@@ -217,7 +209,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const verification = state.verifications[currentUser.id]
           if (!verification) throw new Error('No verification is pending for this account.')
-          const user = verifyEmail(currentUser, verification, code)
+          const user = verifyEmail(currentUser, verification, code, clockNow())
           commit({ ...state, users: state.users.map((u) => (u.id === user.id ? user : u)) }, 'Email verified ✓')
           return true
         } catch (e) {
@@ -230,7 +222,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const verification = state.verifications[currentUser.id]
           if (!verification) throw new Error('No verification is pending for this account.')
-          const user = verifyPhone(currentUser, verification, code)
+          const user = verifyPhone(currentUser, verification, code, clockNow())
           const verifications = { ...state.verifications }
           if (user.emailVerified) delete verifications[user.id]
           commit(
@@ -245,6 +237,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
 
       signOut: () => commit({ ...state, currentUserId: null }),
+
+      resendCodes: () => {
+        if (!currentUser) return
+        commit(
+          { ...state, verifications: { ...state.verifications, [currentUser.id]: newVerification(clockNow()) } },
+          'New demo verification codes generated locally.',
+          'info',
+        )
+      },
+
+      startGuidedDemo: () => {
+        try {
+          if (hasDemoData(state)) throw new Error('Guided demo data already exists — remove it from the Data Center first.')
+          const demo = buildGuidedDemo(state.users, clockNow())
+          commit(
+            {
+              ...state,
+              users: [...state.users, ...demo.users],
+              leagues: [...state.leagues, demo.league],
+              teams: [...state.teams, ...demo.teams],
+              matches: [...state.matches, ...demo.matches],
+              auditLog: [...state.auditLog, ...demo.audit],
+              primaryAccountIds: [...state.primaryAccountIds, demo.commissionerId],
+              currentUserId: demo.commissionerId,
+            },
+            'Guided demo ready — everything is labeled demo data and removable from the Data Center.',
+          )
+        } catch (e) {
+          fail(e)
+        }
+      },
+
+      removeDemoData: () => {
+        commit(removeDemoData(state), 'All guided-demo data removed. Your own data is untouched.', 'info')
+      },
+
+      applyImportedState: (imported) => {
+        commit({ ...imported, notifications: [] }, 'Backup imported — local state replaced.', 'info')
+      },
       signIn: (userId, password) => {
         try {
           const user = state.users.find((u) => u.id === userId)
@@ -332,8 +363,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
 
       eraseDevice: () => {
-        localStorage.removeItem(STORAGE_KEY)
-        commit(emptyState(), 'All data on this device has been erased.', 'info')
+        clearState()
+        commit(emptyAppState(), 'All data on this device has been erased.', 'info')
       },
 
       dismiss: (id) => dispatch({ type: 'dismiss', id }),
@@ -517,7 +548,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const { match, league } = matchCtx(matchId)
           const event = checkIn(league, match, currentUser, teamId, true)
-          commit(replaceMatch(event.match, event.audit), 'Checked in — attendance recorded with GPS validation.')
+          commit(replaceMatch(event.match, event.audit), 'Checked in — attendance recorded locally on this device.')
         } catch (e) {
           fail(e)
         }

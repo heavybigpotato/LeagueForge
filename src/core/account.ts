@@ -1,5 +1,6 @@
 import type { User } from './types'
 import { newId } from './ids'
+import { PASSWORD_MIN_LENGTH, VERIFICATION } from './config'
 
 /**
  * Account creation and identity verification. LeagueForge has no fake
@@ -14,10 +15,25 @@ import { newId } from './ids'
 export interface PendingVerification {
   emailCode: string
   phoneCode: string
+  issuedAt: number
+  /** Codes expire like real ones would; expired codes must be regenerated. */
+  expiresAt: number
 }
 
 export function newVerificationCode(random: () => number = Math.random): string {
-  return String(Math.floor(random() * 900000) + 100000) // 6 digits, no leading zero
+  const max = Math.pow(10, VERIFICATION.codeDigits)
+  const min = max / 10
+  return String(Math.floor(random() * (max - min)) + min) // fixed digits, no leading zero
+}
+
+/** Fresh pair of local demo codes with an expiry window from config. */
+export function newVerification(now: number = Date.now()): PendingVerification {
+  return {
+    emailCode: newVerificationCode(),
+    phoneCode: newVerificationCode(),
+    issuedAt: now,
+    expiresAt: now + VERIFICATION.ttlMs,
+  }
 }
 
 export interface SignUpInput {
@@ -71,8 +87,8 @@ export function validateSignUp(input: SignUpInput, existing: User[]): void {
   if (digits.length < 7 || digits.length > 15) {
     throw new Error('Enter a valid phone number.')
   }
-  if (input.password.length < 8) {
-    throw new Error('Password must be at least 8 characters.')
+  if (input.password.length < PASSWORD_MIN_LENGTH) {
+    throw new Error(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
   }
 }
 
@@ -97,15 +113,23 @@ export function createAccount(
     reputation: 100,
     createdAt: now,
   }
-  return { user, verification: { emailCode: newVerificationCode(), phoneCode: newVerificationCode() } }
+  return { user, verification: newVerification(now) }
 }
 
-export function verifyEmail(user: User, verification: PendingVerification, code: string): User {
+function assertNotExpired(verification: PendingVerification, now: number) {
+  if (now > verification.expiresAt) {
+    throw new Error('That code has expired — request a new one.')
+  }
+}
+
+export function verifyEmail(user: User, verification: PendingVerification, code: string, now: number = Date.now()): User {
+  assertNotExpired(verification, now)
   if (code.trim() !== verification.emailCode) throw new Error('That email code is not correct.')
   return { ...user, emailVerified: true }
 }
 
-export function verifyPhone(user: User, verification: PendingVerification, code: string): User {
+export function verifyPhone(user: User, verification: PendingVerification, code: string, now: number = Date.now()): User {
+  assertNotExpired(verification, now)
   if (code.trim() !== verification.phoneCode) throw new Error('That phone code is not correct.')
   return { ...user, phoneVerified: true }
 }
