@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { SCHEMA_VERSION } from '../core/config'
 import { checkInvariants } from '../core/invariants'
 import { createAccount, newVerification, verifyEmail } from '../core/account'
+import { createLeague } from '../core/league'
+import { createTeam, enterLeague } from '../core/team'
 import { computeStandings } from '../core/standings'
 import { emptyAppState, migrate, validateStateShape, saveState, loadState, clearState } from './persistence'
 import { exportBackup, validateBackup } from './backup'
-import { buildGuidedDemo, hasDemoData, removeDemoData } from './demo'
 import type { AppState } from './store'
+import type { User } from '../core/types'
 import type { StorageAdapter } from '../adapters/storage'
 
 function memoryStorage(): StorageAdapter {
@@ -17,6 +19,64 @@ function memoryStorage(): StorageAdapter {
     set: (k, v) => (map.set(k, v), true),
     remove: (k) => void map.delete(k),
   }
+}
+
+function verifiedUser(username: string, now: number): User {
+  const { user } = createAccount(
+    { username, email: `${username}@example.com`, phone: `+1555${username.length}000000`, password: 'stadium-lights-9' },
+    [],
+    now,
+  )
+  return { ...user, emailVerified: true, phoneVerified: true }
+}
+
+/**
+ * A small, valid sample state built entirely through the real domain
+ * commands — a commissioner, a league, and a few registered teams. Used to
+ * exercise backup export/import against non-empty state without any
+ * hard-coded or pre-seeded data.
+ */
+function sampleState(now = 1_700_000_000_000): AppState {
+  const commissioner = verifiedUser('commish', now)
+  const { league, audit } = createLeague(
+    commissioner,
+    {
+      name: 'Sample League',
+      sport: 'football',
+      logo: '⚽',
+      banner: '',
+      description: 'Built from real domain commands.',
+      country: 'US',
+      city: 'Portland',
+      seasonStart: new Date(now).toISOString(),
+      seasonEnd: new Date(now + 90 * 86400000).toISOString(),
+      maxTeams: 8,
+      minTeams: 2,
+      minPlayersPerTeam: 11,
+      maxPlayersPerTeam: 22,
+      scheduleFormat: 'round-robin',
+      scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+      tieBreakers: ['goal-difference', 'goals-for'],
+      privacy: 'public',
+      allowTransfers: true,
+    },
+    now,
+  )
+
+  const users: User[] = [commissioner]
+  let teams = [] as ReturnType<typeof createTeam>['team'][]
+  const auditLog = [...audit]
+
+  for (const name of ['Rovers', 'United', 'City']) {
+    const captain = verifiedUser(`cap_${name.toLowerCase()}`, now)
+    users.push(captain)
+    const created = createTeam(captain, { name, logo: '🦁', primaryColor: '#111', secondaryColor: '#fff', bio: '' }, teams, now)
+    const entered = enterLeague(league, created.team, captain.id, teams, false, now)
+    teams = [...teams, entered.team]
+    auditLog.push(...entered.audit)
+  }
+
+  return { ...emptyAppState(), users, leagues: [league], teams, auditLog }
 }
 
 describe('fresh state is truly empty', () => {
@@ -47,57 +107,13 @@ describe('fresh state is truly empty', () => {
   })
 })
 
-describe('guided demo is explicit, labeled, and isolated', () => {
-  it('appears only when built, flags every entity, and passes invariants', () => {
-    const demo = buildGuidedDemo([], 1_700_000_000_000)
-    expect(demo.users.length).toBeGreaterThan(40)
-    expect(demo.users.every((u) => u.isDemo)).toBe(true)
-    expect(demo.league.isDemo).toBe(true)
-    expect(demo.teams.every((t) => t.leagueId === demo.league.id)).toBe(true)
-    // demo went through the real pending → official flow
-    expect(demo.teams.every((t) => t.status === 'official')).toBe(true)
-    const state: AppState = {
-      ...emptyAppState(),
-      users: demo.users,
-      leagues: [demo.league],
-      teams: demo.teams,
-      matches: demo.matches,
-      auditLog: demo.audit,
-    }
+describe('sample state built from real domain commands is valid', () => {
+  it('has a league with registered teams and passes every invariant', () => {
+    const state = sampleState()
+    expect(state.leagues).toHaveLength(1)
+    expect(state.teams.length).toBeGreaterThan(1)
+    expect(state.teams.every((t) => t.leagueId === state.leagues[0].id)).toBe(true)
     expect(checkInvariants(state)).toHaveLength(0)
-    expect(hasDemoData(state)).toBe(true)
-  })
-
-  it('removal deletes only demo-flagged content, never user data', () => {
-    // a real user with a real league
-    const real = createAccount({ username: 'realuser', email: 'r@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
-    const demo = buildGuidedDemo([real.user], 1_700_000_000_000)
-    const state: AppState = {
-      ...emptyAppState(),
-      users: [real.user, ...demo.users],
-      leagues: [demo.league],
-      teams: demo.teams,
-      matches: demo.matches,
-      auditLog: demo.audit,
-      primaryAccountIds: [real.user.id, demo.commissionerId],
-      currentUserId: demo.commissionerId,
-    }
-    const cleaned = removeDemoData(state)
-    expect(cleaned.users.map((u) => u.username)).toEqual(['realuser'])
-    expect(cleaned.leagues).toHaveLength(0)
-    expect(cleaned.teams).toHaveLength(0)
-    expect(cleaned.matches).toHaveLength(0)
-    expect(cleaned.auditLog).toHaveLength(0)
-    expect(cleaned.primaryAccountIds).toEqual([real.user.id])
-    expect(cleaned.currentUserId).toBeNull() // signed-in demo account is gone
-    expect(hasDemoData(cleaned)).toBe(false)
-  })
-
-  it('demo usernames never collide with existing accounts', () => {
-    const taken = createAccount({ username: 'demo_commissioner', email: 'd@example.com', phone: '+15550002222', password: 'stadium-lights-9' }, [])
-    const demo = buildGuidedDemo([taken.user], 1_700_000_000_000)
-    const names = new Set([taken.user.username, ...demo.users.map((u) => u.username)])
-    expect(names.size).toBe(1 + demo.users.length)
   })
 })
 
@@ -154,25 +170,17 @@ describe('persistence envelope, save/load, migrations', () => {
 
 describe('backup export/import', () => {
   it('exports and re-validates a full round trip with counts', () => {
-    const demo = buildGuidedDemo([], 1_700_000_000_000)
-    const state: AppState = {
-      ...emptyAppState(),
-      users: demo.users,
-      leagues: [demo.league],
-      teams: demo.teams,
-      matches: demo.matches,
-      auditLog: demo.audit,
-    }
+    const state = sampleState()
     const json = exportBackup(state, 999)
     const preview = validateBackup(json)
     expect(preview.ok).toBe(true)
     expect(preview.schemaVersion).toBe(SCHEMA_VERSION)
     expect(preview.exportedAt).toBe(999)
     expect(preview.counts?.leagues).toBe(1)
-    expect(preview.counts?.teams).toBe(demo.teams.length)
-    expect(preview.counts?.users).toBe(demo.users.length)
+    expect(preview.counts?.teams).toBe(state.teams.length)
+    expect(preview.counts?.users).toBe(state.users.length)
     expect(preview.violations).toHaveLength(0)
-    expect(preview.state?.matches).toHaveLength(demo.matches.length)
+    expect(preview.state?.matches).toHaveLength(state.matches.length)
   })
 
   it('rejects malformed files with clear errors', () => {
@@ -196,17 +204,9 @@ describe('backup export/import', () => {
   })
 
   it('surfaces invariant violations as warnings, not silent acceptance', () => {
-    const demo = buildGuidedDemo([], 1_700_000_000_000)
-    const state: AppState = {
-      ...emptyAppState(),
-      users: demo.users,
-      leagues: [demo.league],
-      teams: demo.teams,
-      // orphaned match: drop the teams' league linkage by removing a team
-      matches: demo.matches,
-      auditLog: demo.audit,
-    }
-    state.teams = state.teams.slice(1)
+    const state = sampleState()
+    // Break referential integrity: a league whose commissioner no longer exists.
+    state.users = state.users.filter((u) => u.id !== state.leagues[0].commissionerId)
     const preview = validateBackup(exportBackup(state))
     expect(preview.ok).toBe(true)
     expect(preview.warnings.length).toBeGreaterThan(0)

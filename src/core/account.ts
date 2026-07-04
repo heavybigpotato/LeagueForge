@@ -8,8 +8,8 @@ import { PASSWORD_MIN_LENGTH, VERIFICATION } from './config'
  * verify email and phone before it can create or join a team.
  *
  * In the local build there is no mail/SMS gateway, so the generated codes
- * are surfaced in the UI (clearly labelled as demo delivery). The rules —
- * codes must match, verification gates roster actions — are the real ones.
+ * are shown in the UI to complete signup. The rules — codes must match,
+ * verification gates roster actions — are the real ones.
  */
 
 export interface PendingVerification {
@@ -26,7 +26,7 @@ export function newVerificationCode(random: () => number = Math.random): string 
   return String(Math.floor(random() * (max - min)) + min) // fixed digits, no leading zero
 }
 
-/** Fresh pair of local demo codes with an expiry window from config. */
+/** Fresh pair of on-device verification codes with an expiry window from config. */
 export function newVerification(now: number = Date.now()): PendingVerification {
   return {
     emailCode: newVerificationCode(),

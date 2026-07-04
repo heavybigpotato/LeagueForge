@@ -957,7 +957,7 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
 }
 
 /* ------------------------------------------------ onboarding */
-.democode {
+.localcode {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -974,8 +974,8 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
   margin-top: 16px;
   cursor: pointer;
 }
-.democode:hover { filter: brightness(1.15); }
-.democode strong { letter-spacing: 0.18em; font-variant-numeric: tabular-nums; }
+.localcode:hover { filter: brightness(1.15); }
+.localcode strong { letter-spacing: 0.18em; font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------ misc */
 .empty { text-align: center; padding: 36px 20px; color: var(--faint); font-size: 13.5px; }

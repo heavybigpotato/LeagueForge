@@ -10,7 +10,6 @@ import { currentSeasonMatches, endSeason } from '../core/seasons'
 import { auditEntry } from '../core/audit'
 import { checkPassword, createAccount, newVerification, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
 import { clearState, emptyAppState, loadState, saveState } from './persistence'
-import { buildGuidedDemo, hasDemoData, removeDemoData } from './demo'
 import { now as clockNow } from '../adapters/clock'
 import type { EvidenceKind } from '../core/types'
 
@@ -88,11 +87,8 @@ export interface StoreApi {
   signOut(): void
   /** Password-checked sign-in; also how identities are switched. */
   signIn(userId: string, password: string, opts?: { quiet?: boolean }): boolean
-  /** Regenerate the local demo verification codes for the signed-in account. */
+  /** Regenerate the on-device verification codes for the signed-in account. */
   resendCodes(): void
-  /** Explicit guided demo: generates labeled demo data through real commands. */
-  startGuidedDemo(): void
-  removeDemoData(): void
   /** Replace local state with a validated backup (replace mode). */
   applyImportedState(state: AppState): void
   eraseDevice(): void
@@ -250,35 +246,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!currentUser) return
         commit(
           { ...state, verifications: { ...state.verifications, [currentUser.id]: newVerification(clockNow()) } },
-          'New demo verification codes generated locally.',
+          'New verification codes generated on this device.',
           'info',
         )
-      },
-
-      startGuidedDemo: () => {
-        try {
-          if (hasDemoData(state)) throw new Error('Guided demo data already exists — remove it from the Data Center first.')
-          const demo = buildGuidedDemo(state.users, clockNow())
-          commit(
-            {
-              ...state,
-              users: [...state.users, ...demo.users],
-              leagues: [...state.leagues, demo.league],
-              teams: [...state.teams, ...demo.teams],
-              matches: [...state.matches, ...demo.matches],
-              auditLog: [...state.auditLog, ...demo.audit],
-              primaryAccountIds: [...state.primaryAccountIds, demo.commissionerId],
-              currentUserId: demo.commissionerId,
-            },
-            'Guided demo ready — everything is labeled demo data and removable from the Data Center.',
-          )
-        } catch (e) {
-          fail(e)
-        }
-      },
-
-      removeDemoData: () => {
-        commit(removeDemoData(state), 'All guided-demo data removed. Your own data is untouched.', 'info')
       },
 
       applyImportedState: (imported) => {

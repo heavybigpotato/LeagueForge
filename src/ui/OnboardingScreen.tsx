@@ -28,7 +28,6 @@ export function OnboardingScreen() {
 // ---------------------------------------------------------------- landing
 
 function Landing({ accounts, onCreate, onSignIn }: { accounts: User[]; onCreate: () => void; onSignIn: () => void }) {
-  const store = useStore()
   // A team invite deep link (#/join/CODE) survives signup — the router picks it
   // up as soon as the account is verified. Acknowledge it up front.
   const invite = window.location.hash.match(/^#\/join\/([A-Za-z0-9]{8})/)?.[1]?.toUpperCase()
@@ -57,17 +56,9 @@ function Landing({ accounts, onCreate, onSignIn }: { accounts: User[]; onCreate:
             <button className="btn" onClick={onCreate}>Create account</button>
           </>
         ) : (
-          <>
-            <button className="btn primary" onClick={onCreate}>Create account</button>
-            <button className="btn" onClick={() => store.startGuidedDemo()}>
-              <Icon name="sparkle" size={16} /> Try the demo
-            </button>
-          </>
+          <button className="btn primary" onClick={onCreate}>Create account</button>
         )}
         <div className="auth-links">
-          {accounts.length > 0 && (
-            <button className="textlink" onClick={() => store.startGuidedDemo()}>Try the demo</button>
-          )}
           <ImportBackupLink />
         </div>
       </div>
@@ -261,8 +252,8 @@ function VerifyStep({ user }: { user: User }) {
         <OtpEntry key={stage} submit={submit} />
 
         {code && !expired && (
-          <button className="democode" data-code={code} onClick={() => submit(code)}>
-            <Icon name="send" size={14} /> Demo code: <strong>{code}</strong> — tap to fill
+          <button className="localcode" data-code={code} onClick={() => submit(code)}>
+            <Icon name="send" size={14} /> Your code: <strong>{code}</strong> — tap to fill
           </button>
         )}
 
@@ -276,7 +267,7 @@ function VerifyStep({ user }: { user: User }) {
           <button className="textlink" onClick={() => store.resendCodes()}>Send a new code</button>
         </p>
         <p className="auth-foot" style={{ marginTop: 'auto' }}>
-          Demo mode — codes are generated on this device. No email or SMS is sent.
+          Codes are generated on this device — this build has no email or SMS backend.
         </p>
       </div>
     </Shell>
