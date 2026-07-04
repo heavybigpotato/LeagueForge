@@ -1,21 +1,12 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store/store'
-import type { EvidenceKind } from '../core/types'
 import { EmptyState, TeamLogo, formatDate, formatTime, formatWhen } from './components'
 import { MatchBadge } from './LeagueScreen'
 import { Icon } from './icons'
 import { rsvpCount } from '../core/match'
 import { shareResultCard } from './shareCards'
 import type { Match, Team } from '../core/types'
-
-const EVIDENCE_KINDS: { kind: EvidenceKind; label: string; icon: string }[] = [
-  { kind: 'photo', label: 'Photo', icon: 'camera' },
-  { kind: 'video', label: 'Video', icon: 'eye' },
-  { kind: 'score-sheet', label: 'Score sheet', icon: 'scroll' },
-  { kind: 'referee-report', label: 'Referee report', icon: 'whistle' },
-  { kind: 'witness', label: 'Witness', icon: 'user' },
-]
 
 export function MatchScreen() {
   const { matchId } = useParams()
@@ -25,7 +16,8 @@ export function MatchScreen() {
   const [awayScore, setAwayScore] = useState(0)
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
-  const [kind, setKind] = useState<EvidenceKind>('photo')
+  const [photo, setPhoto] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
 
   const match = state.matches.find((m) => m.id === matchId)
   if (!match) return <EmptyState icon="alert">Match not found.</EmptyState>
@@ -209,54 +201,124 @@ export function MatchScreen() {
       <HeadToHead current={match} home={home} away={away} />
 
       <h2>Evidence ({match.evidence.length})</h2>
-      {match.evidence.length === 0 && <p className="faint">No evidence uploaded yet.</p>}
+      {match.evidence.length === 0 && <p className="faint">No photos or notes yet.</p>}
       {match.evidence.map((ev) => {
         const u = state.users.find((x) => x.id === ev.uploadedBy)
-        const meta = EVIDENCE_KINDS.find((k) => k.kind === ev.kind)
         return (
           <div className="card" key={ev.id}>
             <div className="row">
               <span className="row" style={{ gap: 7, color: 'var(--blue)', fontWeight: 700, fontSize: 13 }}>
-                <Icon name={meta?.icon ?? 'camera'} size={15} /> {meta?.label ?? ev.kind}
+                <Icon name={ev.dataUrl ? 'camera' : 'scroll'} size={15} /> {ev.dataUrl ? 'Photo' : 'Note'}
               </span>
               <span className="grow" />
               <span className="faint">{formatWhen(ev.at)}</span>
             </div>
-            <div className="muted" style={{ marginTop: 7 }}>{ev.note}</div>
+            {ev.dataUrl && (
+              <button
+                onClick={() => setViewing(ev.dataUrl!)}
+                style={{ display: 'block', width: '100%', border: 'none', background: 'none', padding: 0, marginTop: 10, cursor: 'zoom-in' }}
+                aria-label="View photo"
+              >
+                <img src={ev.dataUrl} alt="Match evidence" style={{ width: '100%', borderRadius: 12, display: 'block' }} />
+              </button>
+            )}
+            {ev.note && <div className="muted" style={{ marginTop: 7 }}>{ev.note}</div>}
             <div className="faint" style={{ marginTop: 4 }}>by @{u?.username}</div>
           </div>
         )
       })}
       {(myTeam || isCommissioner || isReferee) && match.status !== 'official' && evidenceForm()}
+
+      {viewing && (
+        <div
+          onClick={() => setViewing(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <img src={viewing} alt="Evidence" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 12 }} />
+          <button
+            className="btn small"
+            onClick={() => setViewing(null)}
+            style={{ position: 'absolute', top: 'max(16px, env(safe-area-inset-top))', right: 16, width: 'auto' }}
+          >
+            <Icon name="x" size={16} /> Close
+          </button>
+        </div>
+      )}
     </div>
   )
 
   function evidenceForm() {
     if (!match) return null
+    const submit = () => {
+      store.addEvidence(match.id, photo ? 'photo' : 'witness', note, photo ?? undefined)
+      setNote('')
+      setPhoto(null)
+    }
     return (
-        <div className="card">
-          <strong>Add evidence</strong>
-          <p className="faint" style={{ margin: '6px 0 0' }}>Notes stay on this device.</p>
-          <div className="fieldgrid" style={{ marginTop: 10 }}>
-            <label className="field">
-              <span>Type</span>
-              <select value={kind} onChange={(e) => setKind(e.target.value as EvidenceKind)}>
-                {EVIDENCE_KINDS.map((k) => (
-                  <option key={k.kind} value={k.kind}>{k.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Note</span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Describe the evidence" />
-            </label>
+      <div className="card">
+        <strong>Add a photo or note</strong>
+        <p className="faint" style={{ margin: '6px 0 10px' }}>Proof of the result — a scoreboard shot, a team photo. Stays on this device.</p>
+
+        {photo ? (
+          <div style={{ position: 'relative' }}>
+            <img src={photo} alt="Selected" style={{ width: '100%', borderRadius: 12, display: 'block' }} />
+            <button className="btn small danger" style={{ position: 'absolute', top: 8, right: 8, width: 'auto' }} onClick={() => setPhoto(null)}>
+              <Icon name="x" size={14} /> Remove
+            </button>
           </div>
-          <button className="btn" onClick={() => { store.addEvidence(match.id, kind, note); setNote('') }}>
-            <Icon name="plus" size={15} /> Upload
-          </button>
-        </div>
+        ) : (
+          <label className="btn" style={{ cursor: 'pointer' }}>
+            <Icon name="camera" size={16} /> Add a photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (file) setPhoto(await downscaleImage(file))
+                e.target.value = ''
+              }}
+            />
+          </label>
+        )}
+
+        <label className="field" style={{ marginTop: 10 }}>
+          <span>Note (optional)</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything worth recording" />
+        </label>
+        <button className="btn primary" disabled={!photo && !note.trim()} onClick={submit}>
+          <Icon name="plus" size={15} /> Add to record
+        </button>
+      </div>
     )
   }
+}
+
+/** Read an image file and downscale it to a compact JPEG data URL for local storage. */
+async function downscaleImage(file: File, maxDim = 1280, quality = 0.82): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image()
+    i.onload = () => resolve(i)
+    i.onerror = reject
+    i.src = dataUrl
+  })
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+  const w = Math.round(img.width * scale)
+  const h = Math.round(img.height * scale)
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return dataUrl
+  ctx.drawImage(img, 0, 0, w, h)
+  return canvas.toDataURL('image/jpeg', quality)
 }
 
 /** Commissioner tool: move an unplayed fixture to a new date or venue. */

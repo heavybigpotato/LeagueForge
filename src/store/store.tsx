@@ -1,10 +1,11 @@
 import { createContext, useContext, useMemo, useReducer, type ReactNode } from 'react'
 import type { AuditEntry, League, Match, Team, User } from '../core/types'
 import { createLeague, postAnnouncement, setReferee, updateLeague, type CreateLeagueInput, type UpdateLeagueInput } from '../core/league'
-import { approvePlayer, createTeam, enterLeague, leaveLeague, officialTeams, requestJoin } from '../core/team'
+import { approvePlayer, createTeam, enterLeague, leaveLeague, requestJoin } from '../core/team'
 import { PLATFORM_MIN_PLAYERS } from '../core/types'
 import { generateRoundRobin } from '../core/schedule'
 import { addEvidence, checkIn, confirmScore, disputeScore, rescheduleMatch, resolveDispute, rsvp, submitScore } from '../core/match'
+import { advanceCup, drawCup, isValidCupSize } from '../core/knockout'
 import { currentSeasonMatches, endSeason } from '../core/seasons'
 import { auditEntry } from '../core/audit'
 import { checkPassword, createAccount, newVerification, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
@@ -119,7 +120,7 @@ export interface StoreApi {
   confirmScore(matchId: string): void
   disputeScore(matchId: string, reason: string): void
   resolveDispute(matchId: string, homeScore: number, awayScore: number): void
-  addEvidence(matchId: string, kind: EvidenceKind, note: string): void
+  addEvidence(matchId: string, kind: EvidenceKind, note: string, dataUrl?: string): void
   checkIn(matchId: string, teamId: string): void
   rsvp(matchId: string, teamId: string, status: 'in' | 'out'): void
 }
@@ -159,6 +160,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // True once the commissioner has kicked off the current season — i.e. the
     // season has fixtures. Registration closes at that point.
     const seasonLaunched = (league: League) => currentSeasonMatches(league, state.matches).length > 0
+
+    /**
+     * After a cup tie becomes official, move the bracket along: create the
+     * next round's ties once a pairing is decided, and crown the winner when
+     * the final is verified. No-op for league (round-robin) competitions.
+     */
+    const withCupProgress = (next: AppState, leagueId: string): { state: AppState; message?: string } => {
+      const league = next.leagues.find((l) => l.id === leagueId)
+      if (!league || league.scheduleFormat !== 'knockout') return { state: next }
+      const adv = advanceCup(league, next.matches, currentUser.id)
+      let matches = next.matches
+      let auditLog = next.auditLog
+      let message: string | undefined
+      if (adv.matches.length > 0) {
+        matches = [...matches, ...adv.matches]
+        auditLog = [...auditLog, ...adv.audit]
+        message = 'The next cup round is set.'
+      }
+      // Crown at most once per season (crownings never exceed seasons ended + 1).
+      const crownings = auditLog.filter((a) => a.leagueId === leagueId && a.action === 'playoffs.champion').length
+      const seasonsEnded = auditLog.filter((a) => a.leagueId === leagueId && a.action === 'season.ended').length
+      if (adv.championTeamId && crownings <= seasonsEnded) {
+        const champ = next.teams.find((t) => t.id === adv.championTeamId)
+        auditLog = [...auditLog, auditEntry(leagueId, currentUser.id, 'playoffs.champion', `🏆 "${champ?.name}" win the ${league.name} cup!`)]
+        message = `🏆 ${champ?.name} win the cup!`
+      }
+      return { state: { ...next, matches, auditLog }, message }
+    }
 
     return {
       state,
@@ -492,32 +521,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const league = leagueOf(leagueId)
           if (currentUser.id !== league.commissionerId) throw new Error('Only the commissioner can launch the season.')
-          const eligible = officialTeams(state.teams, leagueId)
-          if (eligible.length < 2) throw new Error('You need at least 2 official teams to kick off the season.')
+          const registered = state.teams.filter((t) => t.leagueId === leagueId)
+          const ready = registered.filter((t) => t.status === 'official')
+          const recruiting = registered.filter((t) => t.status !== 'official')
+          const minTeams = Math.max(2, league.minTeams)
+          const isCup = league.scheduleFormat === 'knockout'
+          const alreadyLaunched = currentSeasonMatches(league, state.matches).length > 0
 
-          const fixtures = generateRoundRobin(league, eligible, { double: league.scheduleFormat === 'double-round-robin' })
-          // Replace any unplayed fixtures from this season; keep verified results.
+          if (ready.length < minTeams) {
+            throw new Error(`You need at least ${minTeams} ready teams to kick off — ${ready.length} so far.`)
+          }
+          if (recruiting.length > 0) {
+            throw new Error(`${recruiting.length} team${recruiting.length === 1 ? '' : 's'} still recruiting. Everyone needs ${league.minPlayersPerTeam} players — or remove them first.`)
+          }
+
+          let newMatches
+          let audit
+          let message
+          if (isCup) {
+            if (alreadyLaunched) throw new Error('The cup has already been drawn.')
+            if (!isValidCupSize(ready.length)) throw new Error(`A cup needs 2, 4, 8, or 16 teams — you have ${ready.length}. Add or remove teams.`)
+            const drawn = drawCup(league, ready, currentUser.id)
+            newMatches = drawn.matches
+            audit = drawn.audit
+            message = `The cup is drawn! ${ready.length} teams — win or go home.`
+          } else {
+            newMatches = generateRoundRobin(league, ready)
+            audit = [auditEntry(leagueId, currentUser.id, 'schedule.generated', `Season ${league.currentSeason} kicked off — ${newMatches.length} fixtures for ${ready.length} teams.`)]
+            message = alreadyLaunched
+              ? `Fixtures redrawn — ${newMatches.length} to play.`
+              : `Season ${league.currentSeason} is live! ${newMatches.length} fixtures for ${ready.length} teams.`
+          }
+
+          // Replace this season's unplayed fixtures; keep verified results.
           const withoutOld = state.matches.filter(
-            (m) =>
-              !(
-                m.leagueId === leagueId &&
-                m.status === 'scheduled' &&
-                (m.season ?? 1) === league.currentSeason
-              ),
+            (m) => !(m.leagueId === leagueId && m.status === 'scheduled' && (m.season ?? 1) === league.currentSeason),
           )
-          const relaunch = currentSeasonMatches(league, state.matches).length > 0
+          // Kickoff locks the rosters (unless the league allows transfers).
+          const teams = league.allowTransfers
+            ? state.teams
+            : state.teams.map((t) => (t.leagueId === leagueId && t.status === 'official' ? { ...t, rosterLocked: true } : t))
+
           commit(
-            {
-              ...state,
-              matches: [...withoutOld, ...fixtures],
-              auditLog: [
-                ...state.auditLog,
-                auditEntry(leagueId, currentUser.id, 'schedule.generated', `Season ${league.currentSeason} kicked off — ${fixtures.length} fixtures drawn for ${eligible.length} teams.`),
-              ],
-            },
-            relaunch
-              ? `Fixtures redrawn — ${fixtures.length} to play.`
-              : `Season ${league.currentSeason} is live! ${fixtures.length} fixtures for ${eligible.length} teams.`,
+            { ...state, teams, matches: [...withoutOld, ...newMatches], auditLog: [...state.auditLog, ...audit] },
+            message,
           )
         } catch (e) {
           fail(e)
@@ -543,7 +590,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { match, league } = matchCtx(matchId)
           const team = opposingTeamFor(state, match, currentUser.id)
           const event = confirmScore(league, match, team, currentUser)
-          commit(replaceMatch(event.match, event.audit), 'Result confirmed — the match is official and standings have updated.')
+          const progressed = withCupProgress(replaceMatch(event.match, event.audit), league.id)
+          commit(
+            progressed.state,
+            progressed.message ??
+              (match.stage === 'playoff'
+                ? 'Result confirmed — the cup tie is official.'
+                : 'Result confirmed — the match is official and standings have updated.'),
+          )
         } catch (e) {
           fail(e)
         }
@@ -564,17 +618,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const { match, league } = matchCtx(matchId)
           const event = resolveDispute(league, match, currentUser, homeScore, awayScore)
-          commit(replaceMatch(event.match, event.audit), 'Dispute resolved — the result is official.')
+          const progressed = withCupProgress(replaceMatch(event.match, event.audit), league.id)
+          commit(progressed.state, progressed.message ?? 'Dispute resolved — the result is official.')
         } catch (e) {
           fail(e)
         }
       },
 
-      addEvidence: (matchId, kind, note) => {
+      addEvidence: (matchId, kind, note, dataUrl) => {
         try {
           const { match, league } = matchCtx(matchId)
-          const event = addEvidence(league, match, currentUser, kind, note)
-          commit(replaceMatch(event.match, event.audit), 'Evidence added to the match record.')
+          const event = addEvidence(league, match, currentUser, kind, note, dataUrl)
+          commit(replaceMatch(event.match, event.audit), dataUrl ? 'Photo added to the match record.' : 'Note added to the match record.')
         } catch (e) {
           fail(e)
         }

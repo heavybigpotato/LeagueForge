@@ -1,6 +1,7 @@
 import type { AuditEntry, League, Match, Team } from './types'
 import { auditEntry } from './audit'
 import { computeStandings } from './standings'
+import { bracket } from './knockout'
 
 /**
  * Season lifecycle. A league runs numbered seasons; every match is stamped
@@ -25,18 +26,25 @@ export function endSeason(
 ): { league: League; teams: Team[]; audit: AuditEntry[] } {
   if (actorId !== league.commissionerId) throw new Error('Only the commissioner can end the season.')
   const table = computeStandings(league, teams, matches)
-  const played = table.some((r) => r.played > 0)
-  if (!played) {
-    throw new Error('Nothing to archive yet — verify at least one result before ending the season.')
+  const isCup = league.scheduleFormat === 'knockout'
+
+  // League: the table leader is champion. Cup: the team that won the final.
+  let championTeamId: string | undefined
+  if (isCup) {
+    championTeamId = bracket(league.id, matches, league.currentSeason)?.championTeamId
+    if (!championTeamId) throw new Error('Finish the cup first — there is no winner yet.')
+  } else {
+    if (!table.some((r) => r.played > 0)) {
+      throw new Error('Nothing to archive yet — verify at least one result before ending the season.')
+    }
+    championTeamId = table[0]?.teamId
   }
-  // The champion is whoever tops the verified table.
-  const championTeamId = table[0]?.teamId
 
   const record = {
     season: league.currentSeason,
     endedAt: now,
     championTeamId,
-    tableLeaderTeamId: championTeamId,
+    tableLeaderTeamId: isCup ? undefined : championTeamId,
     table,
   }
   const nextLeague: League = {

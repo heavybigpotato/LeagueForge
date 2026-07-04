@@ -85,7 +85,7 @@ export function buildGuidedDemo(existingUsers: User[], now: number = Date.now())
       minTeams: 2,
       minPlayersPerTeam: 11,
       maxPlayersPerTeam: 22,
-      scheduleFormat: 'double-round-robin',
+      scheduleFormat: 'round-robin',
       scoring: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
       tieBreakers: ['goal-difference', 'goals-for', 'head-to-head'],
       privacy: 'private',
@@ -123,7 +123,7 @@ export function buildGuidedDemo(existingUsers: User[], now: number = Date.now())
     teams.push(team)
   }
 
-  const matches: Match[] = generateRoundRobin(league, teams, { double: true, startDate: new Date(t + 2 * 86400000) })
+  const matches: Match[] = generateRoundRobin(league, teams, { startDate: new Date(t + 2 * 86400000) })
   const teamOf = (id: string) => {
     const idx = teams.findIndex((x) => x.id === id)
     return { team: teams[idx], captain: captains[idx] }
@@ -165,7 +165,7 @@ export function buildGuidedDemo(existingUsers: User[], now: number = Date.now())
     const disp = disputeScore(league, m, away.team, away.captain, 'Demo dispute — the score was 1-1.', tick(6))
     m = disp.match
     audit = [...audit, ...disp.audit]
-    const ev = addEvidence(league, m, away.captain, 'photo', 'Demo evidence note (saved locally).', tick(3))
+    const ev = addEvidence(league, m, away.captain, 'witness', 'Demo evidence note (saved locally).', undefined, tick(3))
     m = ev.match
     audit = [...audit, ...ev.audit]
     put(m)
