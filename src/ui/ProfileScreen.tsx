@@ -132,7 +132,7 @@ export function ProfileScreen() {
           <span className="rowicon"><Icon name="scroll" size={16} /></span>
           <span className="grow">
             <strong style={{ fontSize: 14.5 }}>Data Center</strong>
-            <div className="faint">Back up, import, guided demo &amp; reset</div>
+            <div className="faint">Back up, import &amp; reset</div>
           </span>
           <Icon name="chevronRight" size={16} />
         </Link>

@@ -25,8 +25,6 @@ export interface User {
   idVerified: boolean
   deviceFingerprint: string
   reputation: number
-  /** True only for accounts created by the explicit guided demo. */
-  isDemo?: boolean
   createdAt: number
 }
 
@@ -120,8 +118,6 @@ export interface League {
   commissionerId: Id
   refereeIds: Id[]
   allowTransfers: boolean
-  /** True only for the league created by the explicit guided demo. */
-  isDemo?: boolean
   /** 1-based; every match is stamped with the season it belongs to. */
   currentSeason: number
   /** Archive of completed seasons, oldest first. */

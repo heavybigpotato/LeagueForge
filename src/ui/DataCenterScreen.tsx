@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { corruptedBackupRaw, useStore } from '../store/store'
 import { exportBackup } from '../store/backup'
-import { hasDemoData } from '../store/demo'
 import { checkInvariants } from '../core/invariants'
 import { ROUTES, SCHEMA_VERSION } from '../core/config'
 import { lastSavedAt } from '../store/persistence'
@@ -21,7 +20,6 @@ export function DataCenterScreen() {
   const { state } = store
   const violations = checkInvariants(state)
   const savedAt = lastSavedAt()
-  const demo = hasDemoData(state)
 
   const download = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'application/json' })
@@ -72,7 +70,6 @@ export function DataCenterScreen() {
           <Badge kind={violations.length === 0 ? 'official' : 'disputed'}>
             {violations.length === 0 ? 'All integrity checks pass' : `${violations.length} integrity issue${violations.length === 1 ? '' : 's'}`}
           </Badge>
-          {demo && <Badge kind="pending">Demo data present</Badge>}
         </div>
         {savedAt && <p className="faint" style={{ marginBottom: 0 }}>Last saved {new Date(savedAt).toLocaleString()}.</p>}
         {violations.length > 0 && (
@@ -100,27 +97,6 @@ export function DataCenterScreen() {
         <div style={{ marginTop: 8 }}>
           <ImportBackupButton />
         </div>
-      </div>
-
-      <h2>Guided demo</h2>
-      <div className="card">
-        {demo ? (
-          <>
-            <p className="faint" style={{ marginTop: 0 }}>
-              Demo data is loaded. Removing it never touches your own leagues.
-            </p>
-            <button className="btn danger" onClick={() => store.removeDemoData()}>Remove all demo data</button>
-          </>
-        ) : (
-          <>
-            <p className="faint" style={{ marginTop: 0 }}>
-              A sample league to poke around in before inviting anyone. Clearly labeled, gone in one tap.
-            </p>
-            <button className="btn" onClick={() => store.startGuidedDemo()}>
-              <Icon name="sparkle" size={16} /> Generate guided demo
-            </button>
-          </>
-        )}
       </div>
 
       <h2>Danger zone</h2>

@@ -3,7 +3,7 @@ import type { ScheduleFormat, Sport } from './types'
 /**
  * Central configuration for the whole platform. Nothing here is app DATA —
  * these are rules, limits, registries, and keys. All league/team/match/user
- * content is created by users at runtime (or by the explicit guided demo).
+ * content is created by users at runtime.
  */
 
 /** Bump when the persisted state shape changes; add a migration alongside. */
@@ -22,7 +22,7 @@ export const INVITE_CODE = {
 
 export const VERIFICATION = {
   codeDigits: 6,
-  /** Demo codes are generated locally and expire like real ones would. */
+  /** Verification codes are generated on-device and expire after this window. */
   ttlMs: 15 * 60 * 1000,
 } as const
 
@@ -38,9 +38,6 @@ export const LIMITS = {
   maxBracket: 16,
   announcementMaxLength: 500,
 } as const
-
-/** Password used by guided-demo accounts so they can be switched into. */
-export const DEMO_PASSWORD = 'leagueforge-demo'
 
 export interface SportInfo {
   id: Sport
