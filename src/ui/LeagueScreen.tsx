@@ -201,7 +201,7 @@ function Standings({ leagueId }: { leagueId: string }) {
   const frozen = state.matches.some((m) => m.leagueId === leagueId && m.status === 'disputed')
 
   if (rows.length === 0) {
-    return <EmptyState icon="activity">The table starts when teams go official.</EmptyState>
+    return <EmptyState icon="activity" title="No table yet">Standings appear once teams go official and results are verified.</EmptyState>
   }
   return (
     <>

@@ -546,7 +546,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             audit = drawn.audit
             message = `The cup is drawn! ${ready.length} teams — win or go home.`
           } else {
-            newMatches = generateRoundRobin(league, ready)
+            // First round starts on the season date, or a few days out if that's
+            // already passed — so there's always a real fixture to count down to.
+            const soon = clockNow() + 3 * 86400000
+            const startDate = new Date(Math.max(new Date(league.seasonStart).getTime() || soon, soon))
+            newMatches = generateRoundRobin(league, ready, { startDate })
             audit = [auditEntry(leagueId, currentUser.id, 'schedule.generated', `Season ${league.currentSeason} kicked off — ${newMatches.length} fixtures for ${ready.length} teams.`)]
             message = alreadyLaunched
               ? `Fixtures redrawn — ${newMatches.length} to play.`

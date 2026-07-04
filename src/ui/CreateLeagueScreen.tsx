@@ -2,9 +2,15 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { PLATFORM_MIN_PLAYERS, type LeaguePrivacy, type ScheduleFormat, type Sport } from '../core/types'
+import { now } from '../adapters/clock'
 import { Icon } from './icons'
 
 const SPORTS: Sport[] = ['football', 'basketball', 'volleyball', 'cricket', 'baseball', 'hockey', 'rugby', 'tennis', 'pickleball', 'esports', 'chess', 'custom']
+
+/** An ISO date `days` from today — so form defaults are never a hard-coded year. */
+function isoDate(days: number): string {
+  return new Date(now() + days * 86400000).toISOString().slice(0, 10)
+}
 
 /** Create a league or a knockout cup. Everything's on one screen — no hidden menus. */
 export function CreateLeagueScreen() {
@@ -18,8 +24,9 @@ export function CreateLeagueScreen() {
     country: '',
     city: '',
     homeVenue: '',
-    seasonStart: '2026-08-01',
-    seasonEnd: '2026-12-15',
+    // Defaults track the calendar, never a baked-in year.
+    seasonStart: isoDate(0),
+    seasonEnd: isoDate(120),
     minTeams: 4,
     maxTeams: 12,
     minPlayersPerTeam: PLATFORM_MIN_PLAYERS,

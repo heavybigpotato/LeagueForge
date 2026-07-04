@@ -127,16 +127,33 @@ export function ProfileScreen() {
       )}
 
       <h2>Account</h2>
-      <button className="btn" onClick={signOut}>
-        <Icon name="plus" size={15} /> Add another account
-      </button>
-      <button className="btn ghost" style={{ marginTop: 8 }} onClick={signOut}>
-        Sign out
-      </button>
-      <Link to={ROUTES.dataCenter} className="btn" style={{ textDecoration: 'none', marginTop: 8 }}>
-        <Icon name="scroll" size={15} /> Data Center — backup, import, demo &amp; reset
-      </Link>
+      <div className="card" style={{ padding: '6px 14px' }}>
+        <Link to={ROUTES.dataCenter} className="listlink hoverable" style={{ padding: '13px 0' }}>
+          <span className="rowicon"><Icon name="scroll" size={16} /></span>
+          <span className="grow">
+            <strong style={{ fontSize: 14.5 }}>Data Center</strong>
+            <div className="faint">Back up, import, guided demo &amp; reset</div>
+          </span>
+          <Icon name="chevronRight" size={16} />
+        </Link>
+        <button className="listlink hoverable" onClick={signOut} style={{ width: '100%', background: 'none', border: 'none', borderTop: '1px solid var(--border-soft)', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: '13px 0', textAlign: 'left' }}>
+          <span className="rowicon"><Icon name="plus" size={16} /></span>
+          <span className="grow">
+            <strong style={{ fontSize: 14.5 }}>Add another account</strong>
+            <div className="faint">Sign in a second identity on this device</div>
+          </span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+        <button className="listlink hoverable" onClick={signOut} style={{ width: '100%', background: 'none', border: 'none', borderTop: '1px solid var(--border-soft)', color: 'var(--red)', font: 'inherit', cursor: 'pointer', padding: '13px 0', textAlign: 'left' }}>
+          <span className="rowicon" style={{ color: 'var(--red)' }}><Icon name="x" size={16} /></span>
+          <span className="grow"><strong style={{ fontSize: 14.5 }}>Sign out</strong></span>
+        </button>
+      </div>
 
+      <p className="faint" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <Icon name="shield" size={14} />
+        <span>Everything stays on this device — no server, no tracking. Your data leaves only when you export it.</span>
+      </p>
     </div>
   )
 }
