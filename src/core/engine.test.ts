@@ -12,6 +12,8 @@ import { newInviteCode, inviteLink } from './ids'
 import { auditEntry } from './audit'
 import { evaluateSeasonAchievements } from './achievements'
 import { computeTeamStats } from './teamStats'
+import { clubProfile, trophyCount } from './clubStats'
+import { leagueSeasonStats } from './leagueStats'
 import { postAnnouncement, setReferee, updateLeague } from './league'
 import { rescheduleMatch } from './match'
 import { currentSeasonMatches, endSeason } from './seasons'
@@ -794,5 +796,81 @@ describe('standings tie-breakers and achievements', () => {
     const awards = evaluateSeasonAchievements(league, teams, fixtures)
     expect(awards.find((a) => a.key === 'champion')?.teamId).toBe(winner.id)
     expect(awards.find((a) => a.key === 'perfect-season')?.teamId).toBe(winner.id)
+  })
+})
+
+describe('club stats and league season stats', () => {
+  function officialize(m: Match, h: number, a: number): Match {
+    return { ...m, status: 'official', result: { homeScore: h, awayScore: a, verifiedAt: 1, verifiedBy: 'captains' } }
+  }
+
+  it('club profile aggregates the all-time record and the trophy cabinet', () => {
+    const commissioner = makeUser()
+    let league = makeLeague(commissioner)
+    let teams: Team[] = []
+    for (const name of ['One', 'Two', 'Three', 'Four']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const rank = (id: string) => teams.findIndex((t) => t.id === id)
+    const season1 = generateRoundRobin(league, teams).map((m) => {
+      const homeBetter = rank(m.homeTeamId) < rank(m.awayTeamId)
+      return officialize(m, homeBetter ? 3 : 0, homeBetter ? 0 : 3)
+    })
+    const champ = teams[0]
+
+    // before the season is archived, no titles yet — but the record exists
+    const mid = clubProfile(champ.id, [league], season1)
+    expect(mid.titles).toHaveLength(0)
+    expect(mid.allTime.wins).toBeGreaterThan(0)
+
+    const ended = endSeason(league, teams, season1, commissioner.id)
+    league = ended.league
+    teams = ended.teams
+
+    const profile = clubProfile(champ.id, [league], season1)
+    expect(profile.titles).toHaveLength(1)
+    expect(profile.titles[0].kind).toBe('league')
+    expect(profile.titles[0].season).toBe(1)
+    expect(profile.appearances).toBe(1)
+    expect(trophyCount(profile.titles)).toEqual({ total: 1, leagues: 1, cups: 0 })
+    // all-time record survives the archive and matches the raw team stats
+    expect(profile.allTime).toEqual(computeTeamStats(champ.id, season1))
+  })
+
+  it('a cup win counts as a cup trophy', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner, { scheduleFormat: 'knockout' })
+    const teams: Team[] = []
+    for (const name of ['A', 'B']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const { matches } = drawCup(league, teams, commissioner.id)
+    const decided = [officialize(matches[0], 2, 1)]
+    const ended = endSeason(league, teams, decided, commissioner.id)
+    const winnerId = matches[0].homeTeamId
+    const profile = clubProfile(winnerId, [ended.league], decided)
+    expect(trophyCount(profile.titles)).toEqual({ total: 1, leagues: 0, cups: 1 })
+  })
+
+  it('league season stats report goals, result split, and leaders', () => {
+    const commissioner = makeUser()
+    const league = makeLeague(commissioner)
+    const teams: Team[] = []
+    for (const name of ['A', 'B', 'C']) teams.push(buildOfficialTeam(league, name, teams).team)
+    const [a, b, c] = teams
+    const fixtures = generateRoundRobin(league, teams)
+    const find = (h: Team, w: Team) =>
+      fixtures.find((m) => (m.homeTeamId === h.id && m.awayTeamId === w.id) || (m.homeTeamId === w.id && m.awayTeamId === h.id))!
+    const asHome = (m: Match, homeId: string, hs: number, as: number) =>
+      m.homeTeamId === homeId ? officialize(m, hs, as) : officialize(m, as, hs)
+    // A 5-0 B, A 2-1 C, B 1-1 C
+    const results = [asHome(find(a, b), a.id, 5, 0), asHome(find(a, c), a.id, 2, 1), asHome(find(b, c), b.id, 1, 1)]
+
+    const stats = leagueSeasonStats(league, teams, results)
+    expect(stats.played).toBe(3)
+    expect(stats.goals).toBe(5 + 2 + 1 + 1 + 1)
+    expect(stats.results.draws).toBe(1)
+    expect(stats.results.homeWins + stats.results.awayWins).toBe(2)
+    expect(stats.topAttack?.teamId).toBe(a.id) // A scored the most (7)
+    expect(stats.topAttack?.value).toBe(7)
+    expect(stats.biggestWin?.margin).toBe(5)
+    expect(stats.highestScoring?.total).toBe(5)
+    expect(stats.avgGoals).toBeCloseTo(10 / 3, 1)
   })
 })

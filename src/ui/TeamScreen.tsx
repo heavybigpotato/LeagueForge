@@ -3,11 +3,13 @@ import { useStore } from '../store/store'
 import { inviteLink } from '../core/ids'
 import { useState } from 'react'
 import { computeTeamStats } from '../core/teamStats'
+import { clubProfile, trophyCount } from '../core/clubStats'
 import { formGuide } from '../core/standings'
 import { rosterBounds } from '../core/team'
 import { ROUTES } from '../core/config'
 import type { Team } from '../core/types'
 import { Avatar, Badge, EmptyState, FormPills, RosterProgress, TeamLogo, VerificationChecks } from './components'
+import { Ring } from './charts'
 import { Icon } from './icons'
 import { InviteQR } from './InviteQR'
 
@@ -143,6 +145,8 @@ export function TeamScreen() {
         </div>
       )}
 
+      <ClubCard team={team} />
+
       {team.status === 'official' && <SeasonStats team={team} />}
 
       {isCaptain && team.pendingMemberIds.length > 0 && (
@@ -240,6 +244,73 @@ async function copyInvite(code: string, asLink: boolean) {
   } catch {
     /* user dismissed the share sheet, or clipboard unavailable */
   }
+}
+
+/**
+ * The club's honours and all-time story: a trophy cabinet and a lifetime
+ * record across every league and season it has ever played.
+ */
+function ClubCard({ team }: { team: Team }) {
+  const { state } = useStore()
+  const profile = clubProfile(team.id, state.leagues, state.matches)
+  const { total, leagues, cups } = trophyCount(profile.titles)
+  const s = profile.allTime
+  const winPct = s.played ? (s.wins / s.played) * 100 : 0
+  if (total === 0 && s.played === 0) return null
+
+  return (
+    <>
+      {total > 0 && (
+        <>
+          <h2>Trophy cabinet</h2>
+          <div className="card">
+            <div className="row" style={{ gap: 14, marginBottom: profile.titles.length ? 12 : 0 }}>
+              <span className="honoricon" style={{ background: 'rgba(240,199,94,0.14)' }}><Icon name="trophy" size={22} /></span>
+              <div className="grow">
+                <strong style={{ fontSize: 20 }}>{total} {total === 1 ? 'trophy' : 'trophies'}</strong>
+                <div className="faint">
+                  {leagues > 0 && `${leagues} league title${leagues === 1 ? '' : 's'}`}
+                  {leagues > 0 && cups > 0 && ' · '}
+                  {cups > 0 && `${cups} cup${cups === 1 ? '' : 's'}`}
+                </div>
+              </div>
+            </div>
+            {profile.titles.map((t, i) => (
+              <div className="person" key={i}>
+                <span className="honoricon"><Icon name={t.kind === 'cup' ? 'trophy' : 'shieldCheck'} size={16} /></span>
+                <div className="grow">
+                  <strong>{t.leagueName}</strong>
+                  <div className="faint">{t.kind === 'cup' ? 'Cup winners' : 'League champions'} · Season {t.season}</div>
+                </div>
+                <Badge kind="pending">🏆</Badge>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {s.played > 0 && (
+        <>
+          <h2>All-time record</h2>
+          <div className="card">
+            <div className="row" style={{ gap: 16, alignItems: 'center' }}>
+              <Ring pct={winPct} label="Win rate" />
+              <div className="grow statgrid" style={{ marginTop: 0 }}>
+                <div className="cell"><div className="v">{s.played}</div><div className="k">Played</div></div>
+                <div className="cell"><div className="v">{s.wins}-{s.draws}-{s.losses}</div><div className="k">W-D-L</div></div>
+                <div className="cell"><div className="v">{s.goalsFor}:{s.goalsAgainst}</div><div className="k">Goals</div></div>
+                <div className="cell"><div className="v">{s.cleanSheets}</div><div className="k">Clean sheets</div></div>
+              </div>
+            </div>
+            <p className="faint" style={{ marginBottom: 0, marginTop: 10 }}>
+              {profile.appearances > 0 ? `${profile.appearances} league${profile.appearances === 1 ? '' : 's'} played · ` : ''}
+              longest win streak {s.longestWinStreak}
+            </p>
+          </div>
+        </>
+      )}
+    </>
+  )
 }
 
 /** Team-level season statistics — LeagueForge tracks the club, not individuals. */

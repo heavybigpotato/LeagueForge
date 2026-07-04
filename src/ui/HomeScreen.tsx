@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store/store'
-import { PLATFORM_MIN_PLAYERS } from '../core/types'
-import { ActionCard, Badge, TeamLogo, formatDate, formatTime } from './components'
+import { PLATFORM_MIN_PLAYERS, type Match } from '../core/types'
+import { formGuide } from '../core/standings'
+import { now } from '../adapters/clock'
+import { ActionCard, Badge, FormPills, TeamLogo, formatDate, formatTime } from './components'
 import { Icon, LeagueBadge } from './icons'
 
 export function HomeScreen() {
@@ -116,27 +119,30 @@ export function HomeScreen() {
       {upcoming.length > 0 && (
         <>
           <h2>Next up</h2>
-          <div className="card flush">
-            {upcoming.map((m) => {
-              const home = state.teams.find((t) => t.id === m.homeTeamId)!
-              const away = state.teams.find((t) => t.id === m.awayTeamId)!
-              return (
-                <Link key={m.id} to={`/match/${m.id}`} className="listlink" style={{ padding: '12px 14px' }}>
-                  <TeamLogo team={home} size={30} />
-                  <TeamLogo team={away} size={30} />
-                  <span className="grow" style={{ minWidth: 0 }}>
-                    <strong style={{ fontSize: 13.5 }} className="truncate">
-                      {home.name} vs {away.name}
-                    </strong>
-                    <div className="faint">
-                      {formatDate(m.scheduledAt)} · {formatTime(m.scheduledAt)} · {m.venue}
-                    </div>
-                  </span>
-                  <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
-                </Link>
-              )
-            })}
-          </div>
+          <NextMatchFeature match={upcoming[0]} />
+          {upcoming.length > 1 && (
+            <div className="card flush">
+              {upcoming.slice(1).map((m) => {
+                const home = state.teams.find((t) => t.id === m.homeTeamId)!
+                const away = state.teams.find((t) => t.id === m.awayTeamId)!
+                return (
+                  <Link key={m.id} to={`/match/${m.id}`} className="listlink" style={{ padding: '12px 14px' }}>
+                    <TeamLogo team={home} size={30} />
+                    <TeamLogo team={away} size={30} />
+                    <span className="grow" style={{ minWidth: 0 }}>
+                      <strong style={{ fontSize: 13.5 }} className="truncate">
+                        {home.name} vs {away.name}
+                      </strong>
+                      <div className="faint">
+                        {formatDate(m.scheduledAt)} · {formatTime(m.scheduledAt)} · {m.venue}
+                      </div>
+                    </span>
+                    <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
         </>
       )}
 
@@ -177,6 +183,7 @@ export function HomeScreen() {
       {myTeams.length > 0 && <h2>Your teams</h2>}
       {myTeams.map((t) => {
         const league = state.leagues.find((l) => l.id === t.leagueId)
+        const form = formGuide(t.id, state.matches)
         return (
           <Link to={`/team/${t.id}`} key={t.id} className="card clickable">
             <div className="row">
@@ -191,7 +198,7 @@ export function HomeScreen() {
                   {league ? league.name : t.status === 'official' ? 'Free agent — pick a league' : `${t.memberIds.length} players · recruiting`}
                 </div>
               </div>
-              <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
+              {form.length > 0 ? <FormPills form={form} /> : <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>}
             </div>
           </Link>
         )
@@ -239,4 +246,53 @@ export function HomeScreen() {
       )}
     </div>
   )
+}
+
+/** The nearest fixture, front and centre, with a live countdown to kickoff. */
+function NextMatchFeature({ match }: { match: Match }) {
+  const { state } = useStore()
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30000)
+    return () => clearInterval(t)
+  }, [])
+
+  const home = state.teams.find((t) => t.id === match.homeTeamId)
+  const away = state.teams.find((t) => t.id === match.awayTeamId)
+  if (!home || !away) return null
+
+  const ms = new Date(match.scheduledAt).getTime() - now()
+  const countdown = formatCountdown(ms)
+
+  return (
+    <Link to={`/match/${match.id}`} className="nextmatch">
+      <div className="nm-head">
+        <span className="kicker">{ms > 0 ? 'Kicks off in' : 'Kicking off'}</span>
+        <span className="nm-count num">{countdown}</span>
+      </div>
+      <div className="nm-teams">
+        <div className="nm-side">
+          <TeamLogo team={home} size={44} />
+          <strong className="truncate">{home.name}</strong>
+        </div>
+        <span className="nm-vs">VS</span>
+        <div className="nm-side">
+          <TeamLogo team={away} size={44} />
+          <strong className="truncate">{away.name}</strong>
+        </div>
+      </div>
+      <div className="nm-foot faint">{formatDate(match.scheduledAt)} · {formatTime(match.scheduledAt)} · {match.venue}</div>
+    </Link>
+  )
+}
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return 'now'
+  const mins = Math.floor(ms / 60000)
+  const days = Math.floor(mins / 1440)
+  const hours = Math.floor((mins % 1440) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  const m = mins % 60
+  if (hours > 0) return `${hours}h ${m}m`
+  return `${m}m`
 }

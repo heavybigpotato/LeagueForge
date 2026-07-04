@@ -301,6 +301,29 @@ input[type='color'] { padding: 4px; height: 44px; cursor: pointer; }
 .statchip .v { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .statchip .k { font-size: 10px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); margin-top: 1px; }
 
+/* ------------------------------------------------ next-match feature */
+.nextmatch {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  background:
+    radial-gradient(340px 160px at 90% -20%, rgba(201, 245, 66, 0.12), transparent 60%),
+    var(--surface);
+  transition: transform 0.15s, border-color 0.15s;
+}
+.nextmatch:active { transform: scale(0.99); }
+.nm-head { display: flex; align-items: baseline; justify-content: space-between; }
+.nm-count { font-size: 22px; font-weight: 800; color: var(--volt); font-variant-numeric: tabular-nums; }
+.nm-teams { display: flex; align-items: center; gap: 12px; margin: 14px 0 10px; }
+.nm-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
+.nm-side strong { font-size: 14px; max-width: 100%; }
+.nm-vs { color: var(--faint); font-weight: 800; font-size: 13px; letter-spacing: 0.08em; }
+.nm-foot { text-align: center; font-size: 12.5px; }
+
 /* ------------------------------------------------ segmented control */
 .segmented {
   display: flex;
