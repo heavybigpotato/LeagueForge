@@ -1,4 +1,5 @@
-import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { StoreProvider, useStore } from './store/store'
 import { isVerifiedUser } from './core/types'
 import { Avatar, Toasts } from './ui/components'
@@ -34,9 +35,19 @@ function Gate() {
   return <MainApp />
 }
 
+/** Reset scroll to the top whenever the route changes — a fresh screen. */
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [pathname])
+  return null
+}
+
 function MainApp() {
   return (
       <HashRouter>
+        <ScrollToTop />
         <div className="phone">
           <TopBar />
           <main className="content">

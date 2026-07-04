@@ -61,9 +61,13 @@ export function DiscoverScreen() {
       )}
 
       {visible.length === 0 ? (
-        <EmptyState icon="compass">
-          {q ? `Nothing matches “${query.trim()}”.` : 'No public leagues around yet. Start the first one.'}
-        </EmptyState>
+        q ? (
+          <EmptyState icon="compass" title="No matches">Nothing matches “{query.trim()}”. Try a different city, sport, or name.</EmptyState>
+        ) : (
+          <EmptyState icon="compass" title="No public leagues yet" action={{ label: 'Start a league', to: '/create-league' }}>
+            Be the first to run one — teams will find you here.
+          </EmptyState>
+        )
       ) : (
         visible.map(({ league, teamCount, spots }) => (
           <div className="card" key={league.id}>

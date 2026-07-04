@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import type { Team, User } from '../core/types'
 import type { FormResult } from '../core/standings'
 import { useStore } from '../store/store'
@@ -89,11 +90,28 @@ function ToastItem({ id, kind, text }: { id: number; kind: 'success' | 'info' | 
   )
 }
 
-export function EmptyState({ icon, children }: { icon: string; children: ReactNode }) {
+export function EmptyState({
+  icon,
+  title,
+  children,
+  action,
+}: {
+  icon: string
+  title?: string
+  children?: ReactNode
+  action?: { label: string; to?: string; onClick?: () => void }
+}) {
   return (
     <div className="empty">
-      <div className="eico"><Icon name={icon} size={24} /></div>
-      {children}
+      <div className="eico"><Icon name={icon} size={26} /></div>
+      {title && <div className="etitle">{title}</div>}
+      {children && <p>{children}</p>}
+      {action &&
+        (action.to ? (
+          <Link className="btn primary" to={action.to} style={{ textDecoration: 'none' }}>{action.label}</Link>
+        ) : (
+          <button className="btn primary" onClick={action.onClick}>{action.label}</button>
+        ))}
     </div>
   )
 }
