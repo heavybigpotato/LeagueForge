@@ -4,6 +4,8 @@ import { useStore } from '../store/store'
 import { computeStandings, formGuide } from '../core/standings'
 import { currentSeasonMatches } from '../core/seasons'
 import { powerRankings } from '../core/powerRankings'
+import { leagueSeasonStats } from '../core/leagueStats'
+import { Bars, Donut } from './charts'
 import { ROUTES } from '../core/config'
 import { shareStandingsCard } from './shareCards'
 import type { Match, Team } from '../core/types'
@@ -106,6 +108,7 @@ export function LeagueScreen() {
           <>
             {!launched && <LaunchCard league={league} />}
             <Standings leagueId={league.id} />
+            <SeasonStatsPanel league={league} />
             <PastSeasons league={league} />
           </>
         ))}
@@ -390,6 +393,95 @@ function Announcements({ league, isCommissioner }: { league: League; isCommissio
   )
 }
 
+/** A glanceable visual read on the season: goals, result split, and leaders. */
+function SeasonStatsPanel({ league }: { league: League }) {
+  const { state } = useStore()
+  const teams = state.teams.filter((t) => t.leagueId === league.id)
+  const stats = leagueSeasonStats(league, teams, state.matches)
+  if (stats.played === 0) return null
+  const name = (id?: string) => teams.find((t) => t.id === id)?.name ?? '—'
+  const logo = (id?: string) => teams.find((t) => t.id === id)
+
+  const leaders = [
+    stats.topAttack && { icon: '⚔️', title: 'Top attack', teamId: stats.topAttack.teamId, value: `${stats.topAttack.value} scored` },
+    stats.bestDefense && { icon: '🛡️', title: 'Best defense', teamId: stats.bestDefense.teamId, value: `${stats.bestDefense.value} conceded` },
+    stats.mostWins && { icon: '🔥', title: 'Most wins', teamId: stats.mostWins.teamId, value: `${stats.mostWins.value} wins` },
+  ].filter(Boolean) as { icon: string; title: string; teamId: string; value: string }[]
+
+  return (
+    <>
+      <h2>Season stats</h2>
+      <div className="card">
+        <Donut
+          size={128}
+          centerTop={String(stats.goals)}
+          centerBottom="goals"
+          segments={[
+            { label: 'Home wins', value: stats.results.homeWins, color: 'var(--volt)' },
+            { label: 'Away wins', value: stats.results.awayWins, color: 'var(--blue)' },
+            { label: 'Draws', value: stats.results.draws, color: 'var(--faint)' },
+          ]}
+        />
+        <div className="statchips" style={{ marginTop: 14 }}>
+          <div className="statchip"><div className="v">{stats.played}</div><div className="k">Played</div></div>
+          <div className="statchip"><div className="v">{stats.goals}</div><div className="k">Goals</div></div>
+          <div className="statchip"><div className="v">{stats.avgGoals}</div><div className="k">Avg / game</div></div>
+        </div>
+      </div>
+
+      {stats.goalsByRound.length > 1 && (
+        <div className="card">
+          <strong className="grow" style={{ display: 'block', marginBottom: 10 }}>Goals by round</strong>
+          <Bars data={stats.goalsByRound.map((r) => ({ label: `R${r.round}`, value: r.goals }))} />
+        </div>
+      )}
+
+      {leaders.length > 0 && (
+        <div className="card">
+          {leaders.map((l, i) => {
+            const t = logo(l.teamId)
+            return (
+              <div className="person" key={i}>
+                <span className="honoricon" aria-hidden>{l.icon}</span>
+                <div className="grow">
+                  <strong>{l.title}</strong>
+                  <div className="faint">{name(l.teamId)} · {l.value}</div>
+                </div>
+                {t && <TeamLogo team={t} size={28} />}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {(stats.biggestWin || stats.highestScoring) && (
+        <div className="card">
+          {stats.biggestWin && (
+            <Link to={`/match/${stats.biggestWin.matchId}`} className="person" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <span className="honoricon" aria-hidden>💥</span>
+              <div className="grow">
+                <strong>Biggest win</strong>
+                <div className="faint">{name(stats.biggestWin.homeTeamId)} {stats.biggestWin.homeScore}–{stats.biggestWin.awayScore} {name(stats.biggestWin.awayTeamId)}</div>
+              </div>
+              <Icon name="chevronRight" size={16} />
+            </Link>
+          )}
+          {stats.highestScoring && stats.highestScoring.matchId !== stats.biggestWin?.matchId && (
+            <Link to={`/match/${stats.highestScoring.matchId}`} className="person" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <span className="honoricon" aria-hidden>🎆</span>
+              <div className="grow">
+                <strong>Goal fest</strong>
+                <div className="faint">{name(stats.highestScoring.homeTeamId)} {stats.highestScoring.homeScore}–{stats.highestScoring.awayScore} {name(stats.highestScoring.awayTeamId)} · {stats.highestScoring.total} goals</div>
+              </div>
+              <Icon name="chevronRight" size={16} />
+            </Link>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 /**
  * Past seasons live right under the current table — champions, table
  * leaders, and final standings, collapsed by default so they never crowd
@@ -426,6 +518,9 @@ function PastSeasons({ league }: { league: League }) {
 function SeasonCard({ record, teamOf }: { record: SeasonRecord; teamOf: (id?: string) => Team | undefined }) {
   const champ = teamOf(record.championTeamId)
   const leader = teamOf(record.tableLeaderTeamId)
+  const played = record.table.filter((r) => r.played > 0)
+  const topAttack = played.length ? played.reduce((a, b) => (b.goalsFor > a.goalsFor ? b : a)) : undefined
+  const bestDefense = played.length ? played.reduce((a, b) => (b.goalsAgainst < a.goalsAgainst ? b : a)) : undefined
   return (
     <div className="card">
       <div className="row" style={{ gap: 8 }}>
@@ -440,6 +535,12 @@ function SeasonCard({ record, teamOf }: { record: SeasonRecord; teamOf: (id?: st
         <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
           {champ && <Badge kind="pending">🏆 Champions: {champ.name}</Badge>}
           {leader && leader.id !== champ?.id && <Badge kind="volt">Table leaders: {leader.name}</Badge>}
+        </div>
+      )}
+      {(topAttack || bestDefense) && (
+        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          {topAttack && <Badge kind="neutral">⚔️ Top attack: {teamOf(topAttack.teamId)?.name} ({topAttack.goalsFor})</Badge>}
+          {bestDefense && <Badge kind="neutral">🛡️ Best defense: {teamOf(bestDefense.teamId)?.name} ({bestDefense.goalsAgainst})</Badge>}
         </div>
       )}
       {record.table.length > 0 && (
