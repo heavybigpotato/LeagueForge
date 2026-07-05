@@ -1,7 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { StoreProvider, useStore } from './store/store'
-import { isVerifiedUser } from './core/types'
 import { Avatar, Toasts } from './ui/components'
 import { BrandMark, Icon } from './ui/icons'
 import { OnboardingScreen } from './ui/OnboardingScreen'
@@ -18,6 +17,8 @@ import { JoinScreen } from './ui/JoinScreen'
 import { DiscoverScreen } from './ui/DiscoverScreen'
 import { ProfileScreen } from './ui/ProfileScreen'
 import { DataCenterScreen } from './ui/DataCenterScreen'
+import { PrivacyScreen, TermsScreen } from './ui/LegalScreens'
+import { ConsentBanner } from './ui/ads'
 import { ROUTES } from './core/config'
 
 export default function App() {
@@ -28,11 +29,34 @@ export default function App() {
   )
 }
 
-/** Everything behind this gate can rely on a signed-in, verified account. */
+/** Everything behind this gate can rely on a signed-in account. */
 function Gate() {
-  const { signedIn, currentUser } = useStore()
-  if (!signedIn || !isVerifiedUser(currentUser)) return <OnboardingScreen />
+  const { signedIn } = useStore()
+  const hash = useHash()
+  if (!signedIn) {
+    // Legal pages must be readable before an account exists (the onboarding
+    // footer links to them), so handle their hashes without the router.
+    if (hash.startsWith(`#${ROUTES.privacy}`) || hash.startsWith(`#${ROUTES.terms}`)) {
+      return (
+        <div className="phone">
+          <main className="content">{hash.startsWith(`#${ROUTES.privacy}`) ? <PrivacyScreen /> : <TermsScreen />}</main>
+        </div>
+      )
+    }
+    return <OnboardingScreen />
+  }
   return <MainApp />
+}
+
+/** Live view of location.hash for the pre-sign-in screens (no router yet). */
+function useHash(): string {
+  const [hash, setHash] = useState(window.location.hash)
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+  return hash
 }
 
 /** Reset scroll to the top whenever the route changes — a fresh screen. */
@@ -66,8 +90,11 @@ function MainApp() {
               <Route path="/join/:code" element={<JoinScreen />} />
               <Route path="/profile" element={<ProfileScreen />} />
               <Route path={ROUTES.dataCenter} element={<DataCenterScreen />} />
+              <Route path={ROUTES.privacy} element={<PrivacyScreen />} />
+              <Route path={ROUTES.terms} element={<TermsScreen />} />
             </Routes>
           </main>
+          <ConsentBanner />
           <Toasts />
           <nav className="bottomnav">
             <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>

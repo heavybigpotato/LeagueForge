@@ -7,7 +7,6 @@ import { lastSavedAt } from '../store/persistence'
 import { localStorageAdapter } from '../adapters/storage'
 import { Badge } from './components'
 import { Icon } from './icons'
-import { ImportBackupButton } from './ImportBackup'
 
 /**
  * Data Portability Center + system health panel. One honest place for
@@ -86,7 +85,7 @@ export function DataCenterScreen() {
       <h2>Backup</h2>
       <div className="card">
         <p className="faint" style={{ marginTop: 0 }}>
-          One JSON file with everything. Imports are previewed before anything changes.
+          One JSON file with everything — keep a copy somewhere safe.
         </p>
         <button
           className="btn primary"
@@ -94,9 +93,6 @@ export function DataCenterScreen() {
         >
           <Icon name="send" size={16} /> Export all data
         </button>
-        <div style={{ marginTop: 8 }}>
-          <ImportBackupButton />
-        </div>
       </div>
 
       <h2>Danger zone</h2>

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { SCHEMA_VERSION } from '../core/config'
 import { checkInvariants } from '../core/invariants'
-import { createAccount, newVerification, verifyEmail } from '../core/account'
+import { createAccount } from '../core/account'
 import { createLeague } from '../core/league'
 import { createTeam, enterLeague } from '../core/team'
 import { computeStandings } from '../core/standings'
 import { emptyAppState, migrate, validateStateShape, saveState, loadState, clearState } from './persistence'
-import { exportBackup, validateBackup } from './backup'
+import { exportBackup, type BackupFile } from './backup'
 import type { AppState } from './store'
 import type { User } from '../core/types'
 import type { StorageAdapter } from '../adapters/storage'
@@ -21,23 +21,22 @@ function memoryStorage(): StorageAdapter {
   }
 }
 
-function verifiedUser(username: string, now: number): User {
-  const { user } = createAccount(
+function makeAccount(username: string, now: number): User {
+  return createAccount(
     { username, email: `${username}@example.com`, phone: `+1555${username.length}000000`, password: 'stadium-lights-9' },
     [],
     now,
   )
-  return { ...user, emailVerified: true, phoneVerified: true }
 }
 
 /**
  * A small, valid sample state built entirely through the real domain
  * commands — a commissioner, a league, and a few registered teams. Used to
- * exercise backup export/import against non-empty state without any
+ * exercise persistence and backup against non-empty state without any
  * hard-coded or pre-seeded data.
  */
 function sampleState(now = 1_700_000_000_000): AppState {
-  const commissioner = verifiedUser('commish', now)
+  const commissioner = makeAccount('commish', now)
   const { league, audit } = createLeague(
     commissioner,
     {
@@ -68,7 +67,7 @@ function sampleState(now = 1_700_000_000_000): AppState {
   const auditLog = [...audit]
 
   for (const name of ['Rovers', 'United', 'City']) {
-    const captain = verifiedUser(`cap_${name.toLowerCase()}`, now)
+    const captain = makeAccount(`cap_${name.toLowerCase()}`, now)
     users.push(captain)
     const created = createTeam(captain, { name, logo: '🦁', primaryColor: '#111', secondaryColor: '#fff', bio: '' }, teams, now)
     const entered = enterLeague(league, created.team, captain.id, teams, false, now)
@@ -88,7 +87,6 @@ describe('fresh state is truly empty', () => {
     expect(s.matches).toHaveLength(0)
     expect(s.auditLog).toHaveLength(0)
     expect(s.primaryAccountIds).toHaveLength(0)
-    expect(Object.keys(s.verifications)).toHaveLength(0)
     expect(s.currentUserId).toBeNull()
   })
 
@@ -120,8 +118,8 @@ describe('sample state built from real domain commands is valid', () => {
 describe('persistence envelope, save/load, migrations', () => {
   it('round-trips state with schema version and strips notifications', () => {
     const storage = memoryStorage()
-    const account = createAccount({ username: 'saver', email: 's@example.com', phone: '+15550003333', password: 'stadium-lights-9' }, [])
-    const state: AppState = { ...emptyAppState(), users: [account.user], notifications: [{ id: 1, text: 'x', kind: 'info' }] }
+    const user = makeAccount('saver', 1_700_000_000_000)
+    const state: AppState = { ...emptyAppState(), users: [user], notifications: [{ id: 1, text: 'x', kind: 'info' }] }
     expect(saveState(state, storage, 123)).toBe(true)
     const loaded = loadState(storage)
     expect(loaded.state?.users[0].username).toBe('saver')
@@ -145,10 +143,38 @@ describe('persistence envelope, save/load, migrations', () => {
     expect(result.corruptedRaw).not.toBeNull()
   })
 
-  it('migrates v6 verifications by adding an expiry model', () => {
-    const migrated = migrate({ verifications: { u1: { emailCode: '111111', phoneCode: '222222' } } }, 6)!
-    const v = (migrated.verifications as Record<string, { expiresAt: number }>).u1
-    expect(v.expiresAt).toBeGreaterThan(Date.now())
+  it('migrates v10 state: drops verification codes and verified flags', () => {
+    const migrated = migrate(
+      {
+        users: [{ id: 'u1', username: 'old', emailVerified: true, phoneVerified: false, idVerified: false }],
+        verifications: { u1: { emailCode: '111111', phoneCode: '222222' } },
+      },
+      10,
+    )!
+    expect(migrated.verifications).toBeUndefined()
+    const user = (migrated.users as Record<string, unknown>[])[0]
+    expect(user.username).toBe('old')
+    expect(user.emailVerified).toBeUndefined()
+    expect(user.phoneVerified).toBeUndefined()
+    expect(user.idVerified).toBeUndefined()
+  })
+
+  it('walks the whole migration chain from v6 without gaps', () => {
+    const migrated = migrate(
+      {
+        users: [{ id: 'u1', username: 'veteran', emailVerified: true }],
+        leagues: [{ id: 'l1', commissionerId: 'u1', scheduleFormat: 'double-round-robin' }],
+        matches: [{ id: 'm1', stage: 'playoff' }, { id: 'm2' }],
+        verifications: { u1: { emailCode: '111111' } },
+      },
+      6,
+    )!
+    expect(migrated.verifications).toBeUndefined()
+    expect((migrated.users as Record<string, unknown>[])[0].emailVerified).toBeUndefined()
+    const league = (migrated.leagues as Record<string, unknown>[])[0]
+    expect(league.scheduleFormat).toBe('round-robin')
+    expect(typeof league.joinCode).toBe('string')
+    expect(migrated.matches as unknown[]).toHaveLength(1) // playoff match dropped at v8→v9
   })
 
   it('validateStateShape rejects malformed structures', () => {
@@ -168,63 +194,23 @@ describe('persistence envelope, save/load, migrations', () => {
   })
 })
 
-describe('backup export/import', () => {
-  it('exports and re-validates a full round trip with counts', () => {
+describe('backup export', () => {
+  it('exports a signed, versioned, re-parseable file with everything in it', () => {
     const state = sampleState()
-    const json = exportBackup(state, 999)
-    const preview = validateBackup(json)
-    expect(preview.ok).toBe(true)
-    expect(preview.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(preview.exportedAt).toBe(999)
-    expect(preview.counts?.leagues).toBe(1)
-    expect(preview.counts?.teams).toBe(state.teams.length)
-    expect(preview.counts?.users).toBe(state.users.length)
-    expect(preview.violations).toHaveLength(0)
-    expect(preview.state?.matches).toHaveLength(state.matches.length)
+    const parsed = JSON.parse(exportBackup(state, 999)) as BackupFile
+    expect(parsed.app).toBe('leagueforge-backup')
+    expect(parsed.schemaVersion).toBe(SCHEMA_VERSION)
+    expect(parsed.exportedAt).toBe(999)
+    expect(parsed.state.users).toHaveLength(state.users.length)
+    expect(parsed.state.leagues).toHaveLength(1)
+    expect(parsed.state.teams).toHaveLength(state.teams.length)
+    // transient toasts never leave the device in a backup
+    expect('notifications' in parsed.state).toBe(false)
   })
 
-  it('rejects malformed files with clear errors', () => {
-    expect(validateBackup('not json').errors[0]).toMatch(/not valid JSON/)
-    expect(validateBackup('{}').errors[0]).toMatch(/not a LeagueForge backup/)
-    expect(validateBackup(JSON.stringify({ app: 'leagueforge-backup' })).errors[0]).toMatch(/schema version/)
-    expect(
-      validateBackup(JSON.stringify({ app: 'leagueforge-backup', schemaVersion: SCHEMA_VERSION + 5, state: {} })).errors[0],
-    ).toMatch(/newer than this app/)
-    expect(
-      validateBackup(JSON.stringify({ app: 'leagueforge-backup', schemaVersion: SCHEMA_VERSION, state: { users: 'x' } })).errors[0],
-    ).toMatch(/malformed/)
-  })
-
-  it('detects duplicate ids', () => {
-    const account = createAccount({ username: 'dupe', email: 'd2@example.com', phone: '+15550004444', password: 'stadium-lights-9' }, [])
-    const state: AppState = { ...emptyAppState(), users: [account.user, account.user] }
-    const preview = validateBackup(exportBackup(state))
-    expect(preview.ok).toBe(false)
-    expect(preview.errors[0]).toMatch(/duplicate user ids/)
-  })
-
-  it('surfaces invariant violations as warnings, not silent acceptance', () => {
+  it('exported state passes the same invariants as the live state', () => {
     const state = sampleState()
-    // Break referential integrity: a league whose commissioner no longer exists.
-    state.users = state.users.filter((u) => u.id !== state.leagues[0].commissionerId)
-    const preview = validateBackup(exportBackup(state))
-    expect(preview.ok).toBe(true)
-    expect(preview.warnings.length).toBeGreaterThan(0)
-  })
-})
-
-describe('verification codes expire', () => {
-  it('rejects codes after the TTL and accepts regenerated ones', () => {
-    const t0 = 1_700_000_000_000
-    const account = createAccount(
-      { username: 'expiry', email: 'e@example.com', phone: '+15550005555', password: 'stadium-lights-9' },
-      [],
-      t0,
-    )
-    const late = account.verification.expiresAt + 1
-    expect(() => verifyEmail(account.user, account.verification, account.verification.emailCode, late)).toThrow(/expired/)
-    const fresh = newVerification(late)
-    const verified = verifyEmail(account.user, fresh, fresh.emailCode, late + 1000)
-    expect(verified.emailVerified).toBe(true)
+    const parsed = JSON.parse(exportBackup(state)) as BackupFile
+    expect(checkInvariants({ ...emptyAppState(), ...parsed.state, notifications: [] } as AppState)).toHaveLength(0)
   })
 })

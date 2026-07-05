@@ -22,16 +22,6 @@ export function Avatar({ user, size }: { user: User; size?: 'sm' }) {
   )
 }
 
-export function VerificationChecks({ user }: { user: User }) {
-  return (
-    <div className="checks">
-      <Badge kind={user.emailVerified ? 'official' : 'neutral'}>{user.emailVerified ? '✓ email' : 'email'}</Badge>
-      <Badge kind={user.phoneVerified ? 'official' : 'neutral'}>{user.phoneVerified ? '✓ phone' : 'phone'}</Badge>
-      {user.idVerified && <Badge kind="awaiting">✓ ID</Badge>}
-    </div>
-  )
-}
-
 export function RosterProgress({ current, required }: { current: number; required: number }) {
   const pct = Math.min(100, Math.round((current / required) * 100))
   const done = current >= required
@@ -41,7 +31,7 @@ export function RosterProgress({ current, required }: { current: number; require
         <div className={`fill${done ? ' done' : ''}`} style={{ width: `${pct}%` }} />
       </div>
       <div className="faint">
-        {done ? 'Roster requirement met' : `${current} of ${required} verified players — ${required - current} more to activate`}
+        {done ? 'Roster requirement met' : `${current} of ${required} players — ${required - current} more to activate`}
       </div>
     </div>
   )

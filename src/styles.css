@@ -719,7 +719,6 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 .avatar.sm { width: 28px; height: 28px; font-size: 10.5px; border-radius: 9px; }
-.checks { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
 .person { display: flex; align-items: center; gap: 11px; padding: 9px 0; }
 .person + .person { border-top: 1px solid var(--border-soft); }
 
@@ -869,10 +868,8 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
 .auth-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .auth-tagline { color: var(--muted); font-size: 15px; margin-top: 10px; font-weight: 600; }
 .auth-actions { display: flex; flex-direction: column; gap: 10px; }
-.auth-links { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 6px; min-height: 34px; }
-.auth-import .btn { width: auto; border: none; background: none; color: var(--muted); font-size: 13px; padding: 6px 4px; }
-.auth-import .card { position: absolute; left: 18px; right: 18px; bottom: 90px; z-index: 40; }
 .auth-foot { text-align: center; color: var(--faint); font-size: 12px; margin: 18px 0 6px; }
+.auth-foot .textlink { font-size: 12px; }
 .auth-invite {
   display: flex;
   align-items: center;
@@ -932,16 +929,6 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
 .strength i.s3 { background: var(--green); }
 .strength span { margin-left: 4px; }
 
-.otp-row { display: flex; gap: 8px; margin-top: 18px; justify-content: center; }
-.otp-box {
-  width: 46px; height: 56px;
-  text-align: center;
-  font-size: 24px; font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  border-radius: 13px;
-  padding: 0;
-}
-.auth-meta { text-align: center; margin-top: 16px; font-size: 13px; color: var(--faint); }
 .auth-account { width: 100%; background: none; border: none; color: inherit; font: inherit; cursor: pointer; }
 
 .shake { animation: shake 0.35s; }
@@ -956,26 +943,46 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
   .content { animation: none; }
 }
 
-/* ------------------------------------------------ onboarding */
-.localcode {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: center;
-  width: 100%;
-  background: rgba(108, 196, 245, 0.09);
-  border: 1px dashed rgba(108, 196, 245, 0.4);
-  color: var(--blue);
-  border-radius: 12px;
-  padding: 11px 12px;
-  font-size: 13px;
-  font-family: inherit;
-  font-weight: 600;
-  margin-top: 16px;
-  cursor: pointer;
+/* ------------------------------------------------ sponsored & consent */
+.adcard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin: 14px 0;
 }
-.localcode:hover { filter: brightness(1.15); }
-.localcode strong { letter-spacing: 0.18em; font-variant-numeric: tabular-nums; }
+.adcard-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 8px;
+}
+.consent {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  width: min(440px, calc(100vw - 24px));
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  z-index: 60;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.consent p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.consent p a { color: var(--blue); }
+.consent-actions { display: flex; gap: 8px; }
+.consent-actions .btn { flex: 1; }
+
+/* ------------------------------------------------ legal pages */
+.legal h2 { margin-top: 22px; }
+.legal p, .legal li { font-size: 13.5px; line-height: 1.65; color: var(--muted); }
+.legal ul { padding-left: 18px; margin: 8px 0; }
+.legal a { color: var(--blue); }
+.legal strong { color: var(--text); }
 
 /* ------------------------------------------------ misc */
 .empty { text-align: center; padding: 36px 20px; color: var(--faint); font-size: 13.5px; }

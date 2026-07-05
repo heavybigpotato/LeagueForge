@@ -154,7 +154,7 @@ export function CreateLeagueScreen() {
 
       <p className="faint" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
         <Icon name="shield" size={14} />
-        <span>Teams register with a roster and go official at {form.minPlayersPerTeam} verified players.</span>
+        <span>Teams register with a roster and go official at {form.minPlayersPerTeam} players.</span>
       </p>
       <button className="btn primary" onClick={submit}>Create {isCup ? 'Cup' : 'League'}</button>
     </div>
