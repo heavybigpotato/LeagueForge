@@ -70,12 +70,12 @@ This repository contains the LeagueForge core engine and a premium, mobile-first
   push to `main` (`.github/workflows/deploy.yml`).
 - **Legal, honestly** — in-app [Privacy Policy](https://heavybigpotato.github.io/LeagueForge/#/privacy)
   and [Terms of Use](https://heavybigpotato.github.io/LeagueForge/#/terms) that describe
-  the local-first reality (your data never leaves the device), a proprietary LICENSE, and
-  THIRD-PARTY-NOTICES for the open-source pieces.
-- **Monetization-ready** — optional Google AdSense integration that is fully off until an
-  operator configures a real publisher id: no placeholders, no ad scripts, no consent
-  banner until then. When enabled, ads render as clearly-labeled native "Sponsored" cards
-  and only load after explicit user consent (EU-safe). Setup:
+  the local-first reality (your data never leaves the device, no ads, no trackers), a
+  proprietary LICENSE, and THIRD-PARTY-NOTICES for the open-source pieces.
+- **Monetization: LeagueForge Pro** — one honest, one-time in-app purchase (accent theme
+  packs + Supporter badge) sold through a hosted checkout and delivered as an offline
+  license key (`npm run pro:key`). Fully off until the operator configures a checkout
+  link — no teaser, no dead buttons. Core features stay free. Setup:
   [`docs/MONETIZATION.md`](docs/MONETIZATION.md) · launch legalities:
   [`docs/LAUNCH-CHECKLIST.md`](docs/LAUNCH-CHECKLIST.md).
 
@@ -107,7 +107,8 @@ npm run build      # typecheck + production build
 src/
   core/       pure domain engine + config + invariants + tests (no React)
   adapters/   local-first seams: clock, storage (auth/notify/upload plug in later)
-  store/      app state, versioned persistence + migrations, backup export, ad consent
-  ui/         screens and shared components (incl. ads.tsx + LegalScreens.tsx)
+  store/      app state, versioned persistence + migrations, backup export, Pro unlock
+  ui/         screens and shared components (incl. ProCard.tsx + LegalScreens.tsx)
+scripts/      pro-key.mjs — mint LeagueForge Pro license keys (npm run pro:key)
 docs/         SPEC.md · MONETIZATION.md · LAUNCH-CHECKLIST.md
 ```

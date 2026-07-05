@@ -943,39 +943,37 @@ table.standings tr.lead td:first-child { box-shadow: inset 3px 0 0 var(--volt); 
   .content { animation: none; }
 }
 
-/* ------------------------------------------------ sponsored & consent */
-.adcard {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 12px 14px;
-  margin: 14px 0;
-}
-.adcard-label {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 8px;
-}
-.consent {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(76px + env(safe-area-inset-bottom));
-  width: min(440px, calc(100vw - 24px));
+/* ------------------------------------------------ LeagueForge Pro */
+.procard { border-color: rgba(201, 245, 66, 0.25); }
+.procard .btn.primary { text-decoration: none; }
+.accent-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.accent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 14px 16px;
-  z-index: 60;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
 }
-.consent p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
-.consent p a { color: var(--blue); }
-.consent-actions { display: flex; gap: 8px; }
-.consent-actions .btn { flex: 1; }
+.accent-chip i { width: 12px; height: 12px; border-radius: 50%; background: var(--volt); }
+.accent-chip[data-accent='volt'] i { background: #c9f542; }
+.accent-chip[data-accent='ember'] i { background: #ffb03a; }
+.accent-chip[data-accent='ocean'] i { background: #5cc8ff; }
+.accent-chip[data-accent='rose'] i { background: #ff7ab0; }
+.accent-chip[data-accent='gold'] i { background: #f2d24b; }
+.accent-chip.on { border-color: var(--volt); color: var(--text); background: var(--volt-soft); }
+
+/* Pro accent packs: retint the signature volt across the whole app. */
+.phone[data-accent='ember'] { --volt: #ffb03a; --volt-soft: rgba(255, 176, 58, 0.14); --volt-ink: #1c1204; }
+.phone[data-accent='ocean'] { --volt: #5cc8ff; --volt-soft: rgba(92, 200, 255, 0.14); --volt-ink: #06141c; }
+.phone[data-accent='rose'] { --volt: #ff7ab0; --volt-soft: rgba(255, 122, 176, 0.14); --volt-ink: #1c060f; }
+.phone[data-accent='gold'] { --volt: #f2d24b; --volt-soft: rgba(242, 210, 75, 0.14); --volt-ink: #191403; }
 
 /* ------------------------------------------------ legal pages */
 .legal h2 { margin-top: 22px; }

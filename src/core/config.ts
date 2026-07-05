@@ -23,25 +23,35 @@ export const INVITE_CODE = {
 export const PASSWORD_MIN_LENGTH = 8
 
 /**
- * Google AdSense wiring. Ads render ONLY when a real publisher id is set —
- * with an empty clientId every ad surface renders nothing at all (no
- * placeholders, no fake ads) and no ad script is ever loaded.
+ * LeagueForge Pro — the in-app purchase. One lifetime unlock, sold through a
+ * hosted checkout (Gumroad / Lemon Squeezy / Stripe Payment Link) and
+ * delivered as a license key the buyer types into the app.
  *
- * To go live: create an AdSense account (adsense.google.com), get the site
- * approved, then put your `ca-pub-…` id and slot ids here and mirror the id
- * in public/ads.txt. Payout details (bank/IBAN) live in AdSense → Payments,
- * never in code. See docs/MONETIZATION.md for the full walkthrough.
+ * With an empty checkoutUrl every purchase surface disappears — no teaser,
+ * no dead button. To go live: create the product on your payment provider,
+ * paste its checkout link here, change keySecret, and mint keys with
+ * `npm run pro:key`. Payout details (bank/IBAN) live in the provider's
+ * dashboard, never in code. Full walkthrough: docs/MONETIZATION.md.
  */
-export const ADSENSE = {
-  /** e.g. 'ca-pub-1234567890123456' — empty disables ads everywhere. */
-  clientId: '',
-  /** Per-surface ad-unit slot ids from AdSense → Ads → By ad unit. */
-  slots: {
-    home: '',
-    discover: '',
-    league: '',
-  },
+export const PRO = {
+  /** Hosted checkout URL, e.g. 'https://yourname.gumroad.com/l/leagueforge-pro'. Empty hides Pro everywhere. */
+  checkoutUrl: '',
+  /** CHANGE THIS before selling — license keys are minted and checked with it. */
+  keySecret: 'leagueforge-dev-secret-change-me',
+  price: '4.99',
+  currency: '€',
 } as const
+
+/** Accent theme packs — the cosmetic side of the Pro unlock. */
+export const ACCENTS = [
+  { id: 'volt', label: 'Volt', pro: false },
+  { id: 'ember', label: 'Ember', pro: true },
+  { id: 'ocean', label: 'Ocean', pro: true },
+  { id: 'rose', label: 'Rose', pro: true },
+  { id: 'gold', label: 'Gold', pro: true },
+] as const
+
+export type AccentId = (typeof ACCENTS)[number]['id']
 
 /** Platform-wide floor for roster size; leagues may raise it, never lower. */
 export const PLATFORM_MIN_PLAYERS = 11

@@ -18,7 +18,7 @@ import { DiscoverScreen } from './ui/DiscoverScreen'
 import { ProfileScreen } from './ui/ProfileScreen'
 import { DataCenterScreen } from './ui/DataCenterScreen'
 import { PrivacyScreen, TermsScreen } from './ui/LegalScreens'
-import { ConsentBanner } from './ui/ads'
+import { useProState } from './store/pro'
 import { ROUTES } from './core/config'
 
 export default function App() {
@@ -69,10 +69,11 @@ function ScrollToTop() {
 }
 
 function MainApp() {
+  const { accent } = useProState()
   return (
       <HashRouter>
         <ScrollToTop />
-        <div className="phone">
+        <div className="phone" data-accent={accent}>
           <TopBar />
           <main className="content">
             <Routes>
@@ -94,7 +95,6 @@ function MainApp() {
               <Route path={ROUTES.terms} element={<TermsScreen />} />
             </Routes>
           </main>
-          <ConsentBanner />
           <Toasts />
           <nav className="bottomnav">
             <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>

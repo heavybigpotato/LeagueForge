@@ -14,7 +14,6 @@ import type { League, SeasonRecord } from '../core/types'
 import { Icon, LeagueBadge } from './icons'
 import { LeagueCodeCard } from './LeagueCodeCard'
 import { CupBracket, LaunchCard } from './BracketView'
-import { AdSlot } from './ads'
 
 // A league shows Table · Matches · Teams; a cup collapses to Bracket · Teams.
 // Everything rarer (past seasons, activity log, settings) hangs off links.
@@ -165,7 +164,6 @@ export function LeagueScreen() {
         <span style={{ color: 'var(--faint)' }}><Icon name="chevronRight" size={16} /></span>
       </Link>
 
-      <AdSlot surface="league" />
     </div>
   )
 }

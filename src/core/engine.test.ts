@@ -18,6 +18,7 @@ import { postAnnouncement, setReferee, updateLeague } from './league'
 import { rescheduleMatch } from './match'
 import { currentSeasonMatches, endSeason } from './seasons'
 import { checkPassword, createAccount, phoneError } from './account'
+import { generateProKey, normalizeProKey, proChecksum, verifyProKey } from './pro'
 
 let userSeq = 0
 function makeUser(overrides: Partial<User> = {}): User {
@@ -86,6 +87,36 @@ describe('invite codes', () => {
     expect(code).toHaveLength(8)
     expect(code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/)
     expect(inviteLink('ABC12345')).toBe('leagueforge.app/join/ABC12345')
+  })
+})
+
+describe('LeagueForge Pro license keys', () => {
+  const secret = 'unit-test-secret'
+
+  it('generated keys verify under the same secret, in any formatting', () => {
+    const key = generateProKey(secret)
+    expect(key).toMatch(/^LFPRO-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/)
+    expect(verifyProKey(key, secret)).toBe(true)
+    expect(verifyProKey(key.toLowerCase(), secret)).toBe(true)
+    expect(verifyProKey(` ${key.replace(/-/g, ' ')} `, secret)).toBe(true)
+  })
+
+  it('rejects tampered keys, wrong secrets, and garbage', () => {
+    const key = generateProKey(secret)
+    expect(verifyProKey(key, 'another-secret')).toBe(false)
+    // flip one payload character to a different valid alphabet character
+    const body = normalizeProKey(key).slice('LFPRO'.length)
+    const flipped = body[0] === 'A' ? 'B' + body.slice(1) : 'A' + body.slice(1)
+    expect(verifyProKey(`LFPRO${flipped}`, secret)).toBe(false)
+    expect(verifyProKey('', secret)).toBe(false)
+    expect(verifyProKey('LFPRO-SHORT', secret)).toBe(false)
+    expect(verifyProKey('TOTALLY-NOT-A-KEY-AT-ALL', secret)).toBe(false)
+  })
+
+  it('checksums are deterministic and secret-dependent', () => {
+    expect(proChecksum('ABCDEFGHJK', secret)).toBe(proChecksum('ABCDEFGHJK', secret))
+    expect(proChecksum('ABCDEFGHJK', secret)).not.toBe(proChecksum('ABCDEFGHJK', 'other'))
+    expect(proChecksum('ABCDEFGHJK', secret)).not.toBe(proChecksum('KJHGFEDCBA', secret))
   })
 })
 
