@@ -1,5 +1,5 @@
 import type { AuditEntry, League, Match, Team, User } from './types'
-import { PLATFORM_MIN_PLAYERS, isVerifiedUser } from './types'
+import { PLATFORM_MIN_PLAYERS } from './types'
 import { LIMITS } from './config'
 import { auditEntry } from './audit'
 import { newId, newInviteCode } from './ids'
@@ -23,9 +23,6 @@ export function createTeam(
   existingTeams: Team[],
   now: number = Date.now(),
 ): TeamEvent {
-  if (!isVerifiedUser(captain)) {
-    throw new Error('Captain must have a verified email and phone number.')
-  }
   const name = input.name.trim()
   if (!name) throw new Error('Team name is required.')
   if (existingTeams.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
@@ -81,9 +78,6 @@ export function requestJoin(
   allTeams: Team[],
   now: number = Date.now(),
 ): TeamEvent {
-  if (!isVerifiedUser(player)) {
-    throw new Error('Players must verify their email and phone number before joining a team.')
-  }
   if (league) assertNotInLeague(player.id, league, allTeams)
   if (team.memberIds.includes(player.id) || team.pendingMemberIds.includes(player.id)) {
     throw new Error('You are already on this team.')
@@ -142,7 +136,7 @@ export function approvePlayer(
     activated = true
     if (league) {
       audit.push(
-        auditEntry(league.id, approverId, 'team.activated', `"${team.name}" reached ${min} verified players and is now officially registered in the league.`, now),
+        auditEntry(league.id, approverId, 'team.activated', `"${team.name}" reached ${min} players and is now officially registered in the league.`, now),
       )
     }
   }

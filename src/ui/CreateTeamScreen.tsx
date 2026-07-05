@@ -41,7 +41,7 @@ export function CreateTeamScreen() {
       <div className="kicker" style={{ marginTop: 10 }}>New team</div>
       <h1>Create a Team</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        You&rsquo;re the captain. Official at {PLATFORM_MIN_PLAYERS} verified players — then pick your league.
+        You&rsquo;re the captain. Official at {PLATFORM_MIN_PLAYERS} players — then pick your league.
       </p>
 
       <div className="card">

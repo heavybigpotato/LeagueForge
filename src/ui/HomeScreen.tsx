@@ -6,6 +6,7 @@ import { formGuide } from '../core/standings'
 import { now } from '../adapters/clock'
 import { ActionCard, Badge, FormPills, TeamLogo, formatDate, formatTime } from './components'
 import { Icon, LeagueBadge } from './icons'
+import { AdSlot } from './ads'
 
 export function HomeScreen() {
   const { state, currentUser } = useStore()
@@ -85,7 +86,7 @@ export function HomeScreen() {
               icon="users"
               tone="volt"
               title={`${t.pendingMemberIds.length} join request${t.pendingMemberIds.length === 1 ? '' : 's'}`}
-              sub={`${t.name} · verified players waiting on your approval`}
+              sub={`${t.name} · players waiting on your approval`}
             />
           ))}
           {pendingTeams.map((t) => {
@@ -244,6 +245,8 @@ export function HomeScreen() {
           </Link>
         </div>
       )}
+
+      <AdSlot surface="home" />
     </div>
   )
 }

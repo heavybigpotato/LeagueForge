@@ -8,7 +8,7 @@ import { addEvidence, checkIn, confirmScore, disputeScore, rescheduleMatch, reso
 import { advanceCup, drawCup, isValidCupSize } from '../core/knockout'
 import { currentSeasonMatches, endSeason } from '../core/seasons'
 import { auditEntry } from '../core/audit'
-import { checkPassword, createAccount, newVerification, verifyEmail, verifyPhone, type PendingVerification } from '../core/account'
+import { checkPassword, createAccount } from '../core/account'
 import { clearState, emptyAppState, loadState, saveState } from './persistence'
 import { now as clockNow } from '../adapters/clock'
 import type { EvidenceKind } from '../core/types'
@@ -25,8 +25,6 @@ export interface AppState {
   currentUserId: string | null
   /** Accounts created through onboarding on this device (shown in the switcher). */
   primaryAccountIds: string[]
-  /** Outstanding verification codes, keyed by user id. */
-  verifications: Record<string, PendingVerification>
   leagues: League[]
   teams: Team[]
   matches: Match[]
@@ -82,15 +80,9 @@ export interface StoreApi {
   currentUser: User
   signedIn: boolean
   signUp(input: { username: string; email: string; phone: string; password: string }): User | undefined
-  verifyEmail(code: string): boolean
-  verifyPhone(code: string): boolean
   signOut(): void
   /** Password-checked sign-in; also how identities are switched. */
   signIn(userId: string, password: string, opts?: { quiet?: boolean }): boolean
-  /** Regenerate the on-device verification codes for the signed-in account. */
-  resendCodes(): void
-  /** Replace local state with a validated backup (replace mode). */
-  applyImportedState(state: AppState): void
   eraseDevice(): void
   updateLeague(leagueId: string, input: UpdateLeagueInput): boolean
   postAnnouncement(leagueId: string, text: string): void
@@ -192,16 +184,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       signUp: (input) => {
         try {
-          const { user, verification } = createAccount(input, state.users)
+          const user = createAccount(input, state.users)
           commit(
             {
               ...state,
               users: [...state.users, user],
               currentUserId: user.id,
               primaryAccountIds: [...state.primaryAccountIds, user.id],
-              verifications: { ...state.verifications, [user.id]: verification },
             },
-            `Welcome, @${user.username}! Verify your email and phone to compete.`,
+            `Welcome, @${user.username}! Found a team or create a league to get going.`,
           )
           return user
         } catch (e) {
@@ -209,51 +200,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
 
-      verifyEmail: (code) => {
-        try {
-          const verification = state.verifications[currentUser.id]
-          if (!verification) throw new Error('No verification is pending for this account.')
-          const user = verifyEmail(currentUser, verification, code, clockNow())
-          commit({ ...state, users: state.users.map((u) => (u.id === user.id ? user : u)) }, 'Email verified ✓')
-          return true
-        } catch (e) {
-          fail(e)
-          return false
-        }
-      },
-
-      verifyPhone: (code) => {
-        try {
-          const verification = state.verifications[currentUser.id]
-          if (!verification) throw new Error('No verification is pending for this account.')
-          const user = verifyPhone(currentUser, verification, code, clockNow())
-          const verifications = { ...state.verifications }
-          if (user.emailVerified) delete verifications[user.id]
-          commit(
-            { ...state, users: state.users.map((u) => (u.id === user.id ? user : u)), verifications },
-            'Phone verified ✓ — your account is ready.',
-          )
-          return true
-        } catch (e) {
-          fail(e)
-          return false
-        }
-      },
-
       signOut: () => commit({ ...state, currentUserId: null }),
 
-      resendCodes: () => {
-        if (!currentUser) return
-        commit(
-          { ...state, verifications: { ...state.verifications, [currentUser.id]: newVerification(clockNow()) } },
-          'New verification codes generated on this device.',
-          'info',
-        )
-      },
-
-      applyImportedState: (imported) => {
-        commit({ ...imported, notifications: [] }, 'Backup imported — local state replaced.', 'info')
-      },
       signIn: (userId, password, opts) => {
         try {
           const user = state.users.find((u) => u.id === userId)
@@ -365,7 +313,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { team, audit } = createTeam(currentUser, input, state.teams)
           commit(
             { ...state, teams: [...state.teams, team], auditLog: [...state.auditLog, ...audit] },
-            `"${team.name}" is yours. Share code ${team.inviteCode} — at ${PLATFORM_MIN_PLAYERS} verified players you go official.`,
+            `"${team.name}" is yours. Share code ${team.inviteCode} — at ${PLATFORM_MIN_PLAYERS} players you go official.`,
           )
           return team
         } catch (e) {
@@ -479,7 +427,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             event.activated
               ? league
                 ? `🎉 "${team.name}" is now officially registered in ${league.name}.`
-                : `🎉 "${team.name}" is official — ${event.team.memberIds.length} verified players. Time to find a league.`
+                : `🎉 "${team.name}" is official — ${event.team.memberIds.length} players strong. Time to find a league.`
               : `@${player.username} approved (${event.team.memberIds.length}/${required}).`,
           )
         } catch (e) {

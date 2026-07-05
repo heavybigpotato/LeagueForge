@@ -17,7 +17,7 @@ import { leagueSeasonStats } from './leagueStats'
 import { postAnnouncement, setReferee, updateLeague } from './league'
 import { rescheduleMatch } from './match'
 import { currentSeasonMatches, endSeason } from './seasons'
-import { checkPassword, createAccount, newVerificationCode, verifyEmail, verifyPhone } from './account'
+import { checkPassword, createAccount, phoneError } from './account'
 
 let userSeq = 0
 function makeUser(overrides: Partial<User> = {}): User {
@@ -29,9 +29,6 @@ function makeUser(overrides: Partial<User> = {}): User {
     phone: `+1555000${userSeq.toString().padStart(4, '0')}`,
     passwordHash: 'test',
     passwordSalt: 'test',
-    emailVerified: true,
-    phoneVerified: true,
-    idVerified: false,
     deviceFingerprint: `fp_${userSeq}`,
     reputation: 100,
     createdAt: 0,
@@ -92,18 +89,18 @@ describe('invite codes', () => {
   })
 })
 
-describe('accounts and verification', () => {
-  it('creates unverified accounts with 6-digit codes for email and phone', () => {
-    const { user, verification } = createAccount({ username: 'alex_r', email: 'alex@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
-    expect(user.emailVerified).toBe(false)
-    expect(user.phoneVerified).toBe(false)
-    expect(verification.emailCode).toMatch(/^\d{6}$/)
-    expect(verification.phoneCode).toMatch(/^\d{6}$/)
-    expect(newVerificationCode()).toMatch(/^\d{6}$/)
+describe('accounts', () => {
+  it('creates a ready-to-play account with no simulated verification step', () => {
+    const user = createAccount({ username: 'alex_r', email: 'alex@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
+    expect(user.username).toBe('alex_r')
+    expect(user.email).toBe('alex@example.com')
+    expect(user.reputation).toBe(100)
+    // no verification codes, flags, or pending states exist anywhere
+    expect(Object.keys(user)).not.toContain('emailVerified')
   })
 
   it('rejects invalid or duplicate identities', () => {
-    const { user } = createAccount({ username: 'taken', email: 'taken@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
+    const user = createAccount({ username: 'taken', email: 'taken@example.com', phone: '+15550001111', password: 'stadium-lights-9' }, [])
     expect(() => createAccount({ username: 'x', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/At least 3/)
     expect(() => createAccount({ username: 'TAKEN', email: 'a@b.co', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/taken/)
     expect(() => createAccount({ username: 'newuser', email: 'not-an-email', phone: '+15550001112', password: 'stadium-lights-9' }, [user])).toThrow(/email/)
@@ -111,27 +108,25 @@ describe('accounts and verification', () => {
     expect(() => createAccount({ username: 'newuser', email: 'a@b.co', phone: '12', password: 'stadium-lights-9' }, [user])).toThrow(/phone number/)
   })
 
+  it('phone is optional: empty passes, junk fails', () => {
+    expect(phoneError('')).toBeNull()
+    expect(phoneError('   ')).toBeNull()
+    expect(phoneError('12')).toMatch(/phone number/)
+    const user = createAccount({ username: 'nophone', email: 'np@example.com', phone: '', password: 'stadium-lights-9' }, [])
+    expect(user.phone).toBe('')
+  })
+
   it('passwords: minimum length enforced, salted hash verifies, wrong password rejected', () => {
     expect(() =>
       createAccount({ username: 'shortpw', email: 's@example.com', phone: '+15550003333', password: 'short' }, []),
     ).toThrow(/At least 8/)
-    const { user } = createAccount({ username: 'lockedin', email: 'l@example.com', phone: '+15550003334', password: 'stadium-lights-9' }, [])
+    const user = createAccount({ username: 'lockedin', email: 'l@example.com', phone: '+15550003334', password: 'stadium-lights-9' }, [])
     expect(user.passwordHash).not.toContain('stadium')
     expect(checkPassword(user, 'stadium-lights-9')).toBe(true)
     expect(checkPassword(user, 'stadium-lights-8')).toBe(false)
     // same password, different account → different hash (unique salts)
-    const { user: other } = createAccount({ username: 'lockedin2', email: 'l2@example.com', phone: '+15550003335', password: 'stadium-lights-9' }, [user])
+    const other = createAccount({ username: 'lockedin2', email: 'l2@example.com', phone: '+15550003335', password: 'stadium-lights-9' }, [user])
     expect(other.passwordHash).not.toBe(user.passwordHash)
-  })
-
-  it('verification requires the exact codes, in either order', () => {
-    const { user, verification } = createAccount({ username: 'casey_v', email: 'c@example.com', phone: '+15550002222', password: 'stadium-lights-9' }, [])
-    expect(() => verifyEmail(user, verification, '000000')).toThrow(/not correct/)
-    const emailDone = verifyEmail(user, verification, verification.emailCode)
-    expect(emailDone.emailVerified).toBe(true)
-    expect(() => verifyPhone(emailDone, verification, 'nope')).toThrow(/not correct/)
-    const done = verifyPhone(emailDone, verification, verification.phoneCode)
-    expect(done.phoneVerified).toBe(true)
   })
 })
 
@@ -152,7 +147,7 @@ describe('league creation', () => {
 })
 
 describe('team lifecycle: standalone creation → official → league entry', () => {
-  it('anyone verified can found a team — no league required', () => {
+  it('anyone can found a team — no league required', () => {
     const captain = makeUser()
     const { team } = createTeam(captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
     expect(team.status).toBe('pending')
@@ -163,18 +158,7 @@ describe('team lifecycle: standalone creation → official → league entry', ()
     expect(computeStandings(makeLeague(makeUser()), [team], [])).toHaveLength(0)
   })
 
-  it('requires verified email and phone to create or join a team', () => {
-    const unverified = makeUser({ phoneVerified: false })
-    expect(() =>
-      createTeam(unverified, { name: 'X', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, []),
-    ).toThrow(/verified/)
-
-    const captain = makeUser()
-    const { team } = createTeam(captain, { name: 'Y', logo: '', primaryColor: '', secondaryColor: '', bio: '' }, [])
-    expect(() => requestJoin(null, team, makeUser({ emailVerified: false }), [team])).toThrow(/verify/)
-  })
-
-  it('goes official at 11 verified players; a free team keeps its roster unlocked', () => {
+  it('goes official at 11 players; a free team keeps its roster unlocked', () => {
     const captain = makeUser()
     let { team } = createTeam(captain, { name: 'Thunder FC', logo: '⚡', primaryColor: '#000', secondaryColor: '#fff', bio: '' }, [])
 
@@ -656,9 +640,8 @@ describe('league administration', () => {
     expect(posted.league.announcements).toHaveLength(1)
     expect(posted.audit[0].action).toBe('league.announcement')
 
-    const unverifiedRef = makeUser({ phoneVerified: false })
-    expect(() => setReferee(league, commissioner.id, unverifiedRef, true)).toThrow(/verified/)
     const ref = makeUser()
+    expect(() => setReferee(league, rando.id, ref, true)).toThrow(/commissioner/)
     const assigned = setReferee(league, commissioner.id, ref, true)
     expect(assigned.league.refereeIds).toContain(ref.id)
     // assigning twice never duplicates

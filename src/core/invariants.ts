@@ -102,13 +102,5 @@ export function checkInvariants(s: StateSnapshot): Violation[] {
     }
   }
 
-  // ---- account integrity
-  for (const l of s.leagues) {
-    const commissioner = s.users.find((u) => u.id === l.commissionerId)
-    if (commissioner && !(commissioner.emailVerified && commissioner.phoneVerified)) {
-      v.push({ rule: 'unverified-commissioner', detail: `League "${l.name}" commissioner is not fully verified.` })
-    }
-  }
-
   return v
 }

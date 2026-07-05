@@ -1,8 +1,7 @@
 /**
  * LeagueForge core domain types.
  *
- * Everything in the platform revolves around four guarantees:
- *  - every player has a verified identity
+ * Everything in the platform revolves around three guarantees:
  *  - every team is earned (pending → official)
  *  - every result is verified (both captains or a referee)
  *  - every action is recorded in an immutable audit log
@@ -16,21 +15,14 @@ export interface User {
   id: Id
   username: string
   email: string
+  /** Optional contact number teammates can use for match-day coordination. */
   phone: string
   /** Salted password hash — accounts are protected, switching requires sign-in. */
   passwordHash: string
   passwordSalt: string
-  emailVerified: boolean
-  phoneVerified: boolean
-  idVerified: boolean
   deviceFingerprint: string
   reputation: number
   createdAt: number
-}
-
-/** A user is eligible to join rosters only once email + phone are verified. */
-export function isVerifiedUser(u: User): boolean {
-  return u.emailVerified && u.phoneVerified
 }
 
 // ---------------------------------------------------------------- Leagues

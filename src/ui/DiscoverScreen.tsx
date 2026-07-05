@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useStore } from '../store/store'
 import type { League } from '../core/types'
 import { Badge, EmptyState } from './components'
+import { AdSlot } from './ads'
 import { Icon, LeagueBadge } from './icons'
 
 /**
@@ -110,6 +111,8 @@ export function DiscoverScreen() {
       <p className="faint" style={{ marginTop: 14, textAlign: 'center' }}>
         Searches the leagues on this device. Private leagues don&rsquo;t show up here.
       </p>
+
+      <AdSlot surface="discover" />
     </div>
   )
 }

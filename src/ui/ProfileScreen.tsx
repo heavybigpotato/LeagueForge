@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store/store'
 import { ROUTES } from '../core/config'
-import { Avatar, Badge, VerificationChecks } from './components'
+import { Avatar, Badge } from './components'
 import { Icon, LeagueBadge, Crest } from './icons'
 
 export function ProfileScreen() {
@@ -45,8 +45,8 @@ export function ProfileScreen() {
           <Avatar user={currentUser} />
           <div className="grow">
             <strong>{currentUser.email}</strong>
-            <div className="faint">{currentUser.phone}</div>
-            <VerificationChecks user={currentUser} />
+            <div className="faint">{currentUser.phone || 'No phone on file'}</div>
+            <div className="faint">Member since {new Date(currentUser.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</div>
           </div>
         </div>
         <div className="statchips">
@@ -132,7 +132,7 @@ export function ProfileScreen() {
           <span className="rowicon"><Icon name="scroll" size={16} /></span>
           <span className="grow">
             <strong style={{ fontSize: 14.5 }}>Data Center</strong>
-            <div className="faint">Back up, import &amp; reset</div>
+            <div className="faint">Back up &amp; reset</div>
           </span>
           <Icon name="chevronRight" size={16} />
         </Link>
@@ -153,6 +153,9 @@ export function ProfileScreen() {
       <p className="faint" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
         <Icon name="shield" size={14} />
         <span>Everything stays on this device — no server, no tracking. Your data leaves only when you export it.</span>
+      </p>
+      <p className="faint" style={{ marginTop: 4 }}>
+        <Link className="textlink" to={ROUTES.terms}>Terms of Use</Link> · <Link className="textlink" to={ROUTES.privacy}>Privacy Policy</Link>
       </p>
     </div>
   )

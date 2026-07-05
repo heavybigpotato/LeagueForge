@@ -44,13 +44,11 @@ export function LeagueSettingsScreen() {
     if (ok) navigate(`/league/${league.id}`)
   }
 
-  // Referee candidates: verified accounts on this device or in this league.
+  // Referee candidates: accounts on this device or in this league.
   const memberIds = new Set(state.teams.filter((t) => t.leagueId === league.id).flatMap((t) => t.memberIds))
   const candidates = state.users.filter(
     (u) =>
       u.id !== league.commissionerId &&
-      u.emailVerified &&
-      u.phoneVerified &&
       (state.primaryAccountIds.includes(u.id) || memberIds.has(u.id) || league.refereeIds.includes(u.id)),
   )
 
@@ -116,7 +114,7 @@ export function LeagueSettingsScreen() {
       <h2>Referees</h2>
       <div className="card">
         <p className="faint" style={{ marginTop: 0 }}>A neutral whistle — referees can settle disputes when captains can&rsquo;t agree.</p>
-        {candidates.length === 0 && <p className="faint" style={{ margin: 0 }}>No eligible verified accounts yet.</p>}
+        {candidates.length === 0 && <p className="faint" style={{ margin: 0 }}>No other accounts to assign yet.</p>}
         {candidates.map((u) => {
           const isRef = league.refereeIds.includes(u.id)
           return (

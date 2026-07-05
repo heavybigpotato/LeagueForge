@@ -142,7 +142,7 @@ export function postAnnouncement(
   }
 }
 
-/** Commissioner assigns (or removes) a verified account as league referee. */
+/** Commissioner assigns (or removes) an account as league referee. */
 export function setReferee(
   league: League,
   actorId: string,
@@ -151,9 +151,6 @@ export function setReferee(
   now: number = Date.now(),
 ): { league: League; audit: AuditEntry[] } {
   if (actorId !== league.commissionerId) throw new Error('Only the commissioner can assign referees.')
-  if (assign && !(referee.emailVerified && referee.phoneVerified)) {
-    throw new Error('Referees must have a verified email and phone number.')
-  }
   const refereeIds = assign
     ? [...new Set([...league.refereeIds, referee.id])]
     : league.refereeIds.filter((id) => id !== referee.id)

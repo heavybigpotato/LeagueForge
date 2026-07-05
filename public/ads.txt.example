@@ -1,0 +1,4 @@
+# Rename this file to ads.txt and replace with YOUR AdSense publisher id
+# (AdSense -> Account -> Account information -> Publisher ID).
+# Format is fixed by the IAB ads.txt standard:
+google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0

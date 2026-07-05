@@ -1,44 +1,17 @@
 import type { User } from './types'
 import { newId } from './ids'
-import { PASSWORD_MIN_LENGTH, VERIFICATION } from './config'
+import { PASSWORD_MIN_LENGTH } from './config'
 
 /**
- * Account creation and identity verification. LeagueForge has no fake
- * pre-loaded users: every account is created through this flow and must
- * verify email and phone before it can create or join a team.
- *
- * In the local build there is no mail/SMS gateway, so the generated codes
- * are shown in the UI to complete signup. The rules — codes must match,
- * verification gates roster actions — are the real ones.
+ * Account creation and identity. LeagueForge has no fake pre-loaded users:
+ * every account is created through this flow. Accounts are real records —
+ * username, email, optional phone — with nothing simulated on top.
  */
-
-export interface PendingVerification {
-  emailCode: string
-  phoneCode: string
-  issuedAt: number
-  /** Codes expire like real ones would; expired codes must be regenerated. */
-  expiresAt: number
-}
-
-export function newVerificationCode(random: () => number = Math.random): string {
-  const max = Math.pow(10, VERIFICATION.codeDigits)
-  const min = max / 10
-  return String(Math.floor(random() * (max - min)) + min) // fixed digits, no leading zero
-}
-
-/** Fresh pair of on-device verification codes with an expiry window from config. */
-export function newVerification(now: number = Date.now()): PendingVerification {
-  return {
-    emailCode: newVerificationCode(),
-    phoneCode: newVerificationCode(),
-    issuedAt: now,
-    expiresAt: now + VERIFICATION.ttlMs,
-  }
-}
 
 export interface SignUpInput {
   username: string
   email: string
+  /** Optional — shown to teammates for match-day coordination. */
   phone: string
   password: string
 }
@@ -86,7 +59,9 @@ export function emailError(email: string, existing: User[]): string | null {
   return null
 }
 
+/** Phone is optional — empty is fine, but a filled-in one must look real. */
 export function phoneError(phone: string): string | null {
+  if (phone.trim() === '') return null
   const digits = phone.replace(/[^\d]/g, '')
   if (digits.length < 7 || digits.length > 15) return "That doesn't look like a phone number."
   return null
@@ -115,46 +90,20 @@ export function validateSignUp(input: SignUpInput, existing: User[]): void {
   if (problem) throw new Error(problem)
 }
 
-export function createAccount(
-  input: SignUpInput,
-  existing: User[],
-  now: number = Date.now(),
-): { user: User; verification: PendingVerification } {
+export function createAccount(input: SignUpInput, existing: User[], now: number = Date.now()): User {
   validateSignUp(input, existing)
   const passwordSalt = newId('salt') + Math.random().toString(36).slice(2)
-  const user: User = {
+  return {
     id: newId('user'),
     username: input.username.trim(),
     email: input.email.trim(),
     phone: input.phone.trim(),
     passwordHash: hashPassword(input.password, passwordSalt),
     passwordSalt,
-    emailVerified: false,
-    phoneVerified: false,
-    idVerified: false,
     deviceFingerprint: deviceFingerprint(),
     reputation: 100,
     createdAt: now,
   }
-  return { user, verification: newVerification(now) }
-}
-
-function assertNotExpired(verification: PendingVerification, now: number) {
-  if (now > verification.expiresAt) {
-    throw new Error('That code has expired — request a new one.')
-  }
-}
-
-export function verifyEmail(user: User, verification: PendingVerification, code: string, now: number = Date.now()): User {
-  assertNotExpired(verification, now)
-  if (code.trim() !== verification.emailCode) throw new Error('That email code is not correct.')
-  return { ...user, emailVerified: true }
-}
-
-export function verifyPhone(user: User, verification: PendingVerification, code: string, now: number = Date.now()): User {
-  assertNotExpired(verification, now)
-  if (code.trim() !== verification.phoneCode) throw new Error('That phone code is not correct.')
-  return { ...user, phoneVerified: true }
 }
 
 function deviceFingerprint(): string {

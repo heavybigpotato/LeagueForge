@@ -1,5 +1,5 @@
 import type { AppState } from './store'
-import { LEGACY_STORAGE_KEYS, SCHEMA_VERSION, STORAGE_KEY, VERIFICATION } from '../core/config'
+import { LEGACY_STORAGE_KEYS, SCHEMA_VERSION, STORAGE_KEY } from '../core/config'
 import { newInviteCode } from '../core/ids'
 import { localStorageAdapter, type StorageAdapter } from '../adapters/storage'
 
@@ -29,7 +29,6 @@ export function emptyAppState(): AppState {
     users: [],
     currentUserId: null,
     primaryAccountIds: [],
-    verifications: {},
     leagues: [],
     teams: [],
     matches: [],
@@ -44,7 +43,6 @@ export function validateStateShape(s: unknown): s is Omit<AppState, 'notificatio
   const x = s as Record<string, unknown>
   const arrays = ['users', 'leagues', 'teams', 'matches', 'auditLog', 'primaryAccountIds'] as const
   for (const key of arrays) if (!Array.isArray(x[key])) return false
-  if (typeof x.verifications !== 'object' || x.verifications === null) return false
   if (x.currentUserId !== null && typeof x.currentUserId !== 'string') return false
   for (const u of x.users as unknown[]) {
     const user = u as Record<string, unknown>
@@ -61,20 +59,9 @@ type Migration = (state: Record<string, unknown>) => Record<string, unknown>
 
 /** Migrations keyed by the version they upgrade FROM. */
 const MIGRATIONS: Record<number, Migration> = {
-  // v6 → v7: verification codes gained an expiry model.
-  6: (state) => {
-    const verifications = (state.verifications ?? {}) as Record<string, Record<string, unknown>>
-    const upgraded: Record<string, unknown> = {}
-    const nowMs = Date.now()
-    for (const [userId, v] of Object.entries(verifications)) {
-      upgraded[userId] = {
-        ...v,
-        issuedAt: v.issuedAt ?? nowMs,
-        expiresAt: v.expiresAt ?? nowMs + VERIFICATION.ttlMs,
-      }
-    }
-    return { ...state, verifications: upgraded }
-  },
+  // v6 → v7: verification codes gained an expiry model (verification itself
+  // was removed at v11; this step only keeps the chain walkable from v6).
+  6: (state) => state,
   // v7 → v8: teams became independent of leagues (leagueId may now be null).
   // Existing teams keep the league they were created in — no data changes.
   7: (state) => state,
@@ -99,6 +86,19 @@ const MIGRATIONS: Record<number, Migration> = {
     return {
       ...state,
       leagues: leagues.map((l) => (l.scheduleFormat === 'double-round-robin' ? { ...l, scheduleFormat: 'round-robin' } : l)),
+    }
+  },
+  // v10 → v11: identity-verification theater removed. Accounts no longer
+  // carry verified flags and no verification codes are pending anywhere.
+  10: (state) => {
+    const users = (state.users as Record<string, unknown>[] | undefined) ?? []
+    const { verifications: _dropped, ...rest } = state
+    return {
+      ...rest,
+      users: users.map((u) => {
+        const { emailVerified: _e, phoneVerified: _p, idVerified: _i, ...user } = u
+        return user
+      }),
     }
   },
 }

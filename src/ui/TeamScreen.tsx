@@ -8,7 +8,7 @@ import { formGuide } from '../core/standings'
 import { rosterBounds } from '../core/team'
 import { ROUTES } from '../core/config'
 import type { Team } from '../core/types'
-import { Avatar, Badge, EmptyState, FormPills, RosterProgress, TeamLogo, VerificationChecks } from './components'
+import { Avatar, Badge, EmptyState, FormPills, RosterProgress, TeamLogo } from './components'
 import { Ring } from './charts'
 import { Icon } from './icons'
 import { InviteQR } from './InviteQR'
@@ -114,7 +114,7 @@ export function TeamScreen() {
               <strong>{team.status === 'official' ? 'Ready for a league' : 'Building the squad'}</strong>
               <div className="faint">
                 {team.status === 'official'
-                  ? `${team.memberIds.length} verified players — register anywhere.`
+                  ? `${team.memberIds.length} players — register anywhere.`
                   : `${team.memberIds.length}/${bounds.min} players. You can register for a league now and recruit the rest.`}
               </div>
             </div>
@@ -163,7 +163,7 @@ export function TeamScreen() {
                 <Avatar user={u} />
                 <div className="grow">
                   <strong>@{u.username}</strong>
-                  <VerificationChecks user={u} />
+                  <div className="faint">reputation {u.reputation}</div>
                 </div>
                 <button className="btn primary small" onClick={() => approvePlayer(team.id, u.id)}>
                   Approve
@@ -191,7 +191,6 @@ export function TeamScreen() {
                 </div>
                 <div className="faint">reputation {u.reputation}</div>
               </div>
-              <VerificationChecks user={u} />
             </div>
           )
         })}

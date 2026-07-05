@@ -7,7 +7,7 @@ import type { ScheduleFormat, Sport } from './types'
  */
 
 /** Bump when the persisted state shape changes; add a migration alongside. */
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 11
 
 /** Single source of truth for local persistence. */
 export const STORAGE_KEY = 'leagueforge-state'
@@ -20,13 +20,28 @@ export const INVITE_CODE = {
   alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
 } as const
 
-export const VERIFICATION = {
-  codeDigits: 6,
-  /** Verification codes are generated on-device and expire after this window. */
-  ttlMs: 15 * 60 * 1000,
-} as const
-
 export const PASSWORD_MIN_LENGTH = 8
+
+/**
+ * Google AdSense wiring. Ads render ONLY when a real publisher id is set —
+ * with an empty clientId every ad surface renders nothing at all (no
+ * placeholders, no fake ads) and no ad script is ever loaded.
+ *
+ * To go live: create an AdSense account (adsense.google.com), get the site
+ * approved, then put your `ca-pub-…` id and slot ids here and mirror the id
+ * in public/ads.txt. Payout details (bank/IBAN) live in AdSense → Payments,
+ * never in code. See docs/MONETIZATION.md for the full walkthrough.
+ */
+export const ADSENSE = {
+  /** e.g. 'ca-pub-1234567890123456' — empty disables ads everywhere. */
+  clientId: '',
+  /** Per-surface ad-unit slot ids from AdSense → Ads → By ad unit. */
+  slots: {
+    home: '',
+    discover: '',
+    league: '',
+  },
+} as const
 
 /** Platform-wide floor for roster size; leagues may raise it, never lower. */
 export const PLATFORM_MIN_PLAYERS = 11
@@ -91,4 +106,6 @@ export const ROUTES = {
   joinCode: (code = ':code') => `/join/${code}`,
   profile: '/profile',
   dataCenter: '/data',
+  privacy: '/privacy',
+  terms: '/terms',
 } as const
