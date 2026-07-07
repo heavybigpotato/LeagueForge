@@ -2,7 +2,8 @@ import { ROUTES } from '../core/config'
 
 /**
  * Plain-language legal pages, honest about how the app actually works:
- * local-first storage, no server accounts, optional consent-gated ads.
+ * local-first storage, no server accounts, no ads, optional one-time
+ * purchase handled entirely by an external payment provider.
  * Reachable both signed-in (router) and signed-out (hash fallback in App).
  */
 
@@ -40,15 +41,18 @@ export function PrivacyScreen() {
         Use your device&rsquo;s lock screen and don&rsquo;t enter real passwords you use elsewhere.
       </p>
 
-      <h2>Advertising</h2>
+      <h2>No ads, no trackers</h2>
       <p>
-        If advertising is enabled in your build, LeagueForge shows ads through <strong>Google AdSense</strong> — but only
-        after you explicitly allow it in the consent prompt. Until you consent, no advertising code loads and no data is
-        shared with Google. If you consent, Google may process your IP address and use cookies or similar technologies to
-        serve and measure ads; see{' '}
-        <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noreferrer">
-          how Google uses information from partner sites
-        </a>. You can withdraw consent anytime by clearing this site&rsquo;s cookies/storage for the ad preference.
+        LeagueForge shows <strong>no advertising</strong> and loads no third-party scripts, cookies, or trackers. Nothing
+        about your usage is measured or shared.
+      </p>
+
+      <h2>Purchases (LeagueForge Pro)</h2>
+      <p>
+        If the optional <strong>LeagueForge Pro</strong> upgrade is offered in your build, payment happens entirely on the
+        payment provider&rsquo;s own secure checkout page — the app never sees or stores your card or bank details. The
+        provider processes your payment data under its own privacy policy and emails you a license key. The key you enter
+        is stored only on your device.
       </p>
 
       <h2>Your rights (GDPR / CCPA)</h2>
@@ -103,11 +107,13 @@ export function TermsScreen() {
         consequential damages. Some jurisdictions don&rsquo;t allow certain exclusions, so parts of this may not apply to you.
       </p>
 
-      <h2>Advertising</h2>
+      <h2>Purchases</h2>
       <p>
-        Builds with advertising enabled show clearly-labeled sponsored content via Google AdSense, only after your consent.
-        Advertisers, not LeagueForge, are responsible for their ads&rsquo; content; ads are filtered through Google&rsquo;s
-        ad policies.
+        LeagueForge Pro is an optional, one-time cosmetic upgrade (theme packs and a Supporter badge). It is a digital good
+        delivered immediately as a license key: by purchasing and activating it you consent to immediate delivery, which
+        under EU consumer rules can waive the 14-day withdrawal right for digital content. Refund requests are handled by
+        the payment provider and the operator in good faith. The unlock is per-device; keep your key with your receipt.
+        Core features — leagues, teams, matches, standings — are free and stay free.
       </p>
 
       <h2>Changes</h2>

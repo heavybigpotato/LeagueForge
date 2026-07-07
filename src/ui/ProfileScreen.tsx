@@ -4,9 +4,12 @@ import { useStore } from '../store/store'
 import { ROUTES } from '../core/config'
 import { Avatar, Badge } from './components'
 import { Icon, LeagueBadge, Crest } from './icons'
+import { ProCard } from './ProCard'
+import { useProState } from '../store/pro'
 
 export function ProfileScreen() {
   const { state, currentUser, signIn, signOut } = useStore()
+  const { unlocked: pro } = useProState()
   const [switchFor, setSwitchFor] = useState<string | null>(null)
   const [switchPassword, setSwitchPassword] = useState('')
 
@@ -37,7 +40,10 @@ export function ProfileScreen() {
   return (
     <div>
       <div className="kicker">Career profile</div>
-      <h1>@{currentUser.username}</h1>
+      <div className="row" style={{ gap: 10 }}>
+        <h1 style={{ margin: 0 }}>@{currentUser.username}</h1>
+        {pro && <Badge kind="volt">Supporter</Badge>}
+      </div>
 
       <div className="hero" style={{ marginTop: 8 }}>
         <div className="glow" style={{ background: 'radial-gradient(380px 190px at 90% -25%, rgba(201,245,66,0.12), transparent 65%)' }} />
@@ -125,6 +131,8 @@ export function ProfileScreen() {
           </div>
         </>
       )}
+
+      <ProCard />
 
       <h2>Account</h2>
       <div className="card" style={{ padding: '6px 14px' }}>

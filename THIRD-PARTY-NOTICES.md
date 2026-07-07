@@ -14,7 +14,6 @@ licenses below permit commercial and ad-supported use.
 Full license texts ship inside the corresponding packages under
 `node_modules/<package>/LICENSE` and are included in source distributions.
 
-When advertising is enabled by the operator, the app loads the Google AdSense
-script from Google's servers under the
-[AdSense Terms of Service](https://www.google.com/adsense/new/localized-terms);
-it is not bundled with this software.
+The app loads no third-party scripts at runtime. When the operator offers the
+LeagueForge Pro upgrade, checkout happens on the payment provider's own site
+under that provider's terms; nothing of theirs is bundled with this software.

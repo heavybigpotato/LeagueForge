@@ -6,7 +6,6 @@ import { formGuide } from '../core/standings'
 import { now } from '../adapters/clock'
 import { ActionCard, Badge, FormPills, TeamLogo, formatDate, formatTime } from './components'
 import { Icon, LeagueBadge } from './icons'
-import { AdSlot } from './ads'
 
 export function HomeScreen() {
   const { state, currentUser } = useStore()
@@ -246,7 +245,6 @@ export function HomeScreen() {
         </div>
       )}
 
-      <AdSlot surface="home" />
     </div>
   )
 }
